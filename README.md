@@ -63,6 +63,40 @@ Useful flags:
 | `--save black` | only write the black frames (or `none` for stats only) |
 | `--threshold 12.5` | override the auto black/lit cutoff |
 
+## Resolution / AOI
+
+The pylon Viewer resolution box is just the GenICam `Width`/`Height`/`OffsetX`/
+`OffsetY` nodes, so both scripts expose them (same flags on each):
+
+| flag | effect |
+| --- | --- |
+| `--width 640 --height 480` | area of interest, centred by default |
+| `--offset-x 320 --offset-y 200` | put the AOI somewhere other than the centre |
+| `--binning 2` | combine 2x2 pixels — quarter the data, better SNR |
+| `--binning-mode Sum` | brighten while binning (default `Average` keeps the intensity scale, which matters because the black-frame threshold *is* an intensity) |
+| `--full` | full sensor, offsets zeroed, binning reset to 1 |
+
+Measured on this camera (`acA1920-40um`):
+
+| AOI | max frame rate |
+| --- | --- |
+| 1936x1216 (full) | 41.1 fps |
+| 640x480 | 99.2 fps |
+
+Reading out fewer rows is what buys the speed, so `--height` matters far more
+than `--width`. A faster frame rate also means finer time resolution on the
+flicker, which makes the black/lit split cleaner.
+
+Two things worth knowing:
+
+- The real sensor is **1936x1216**; 1920x1200 is the nominal spec figure. `--full`
+  gives you the former.
+- **The camera keeps these settings between runs** — they live in the camera, not
+  the script. Run `--binning 2` once and every later run stays binned until you
+  pass `--full` or `--binning 1`, or power-cycle the camera. The scripts warn when
+  they find leftover binning. Values are clamped to the camera's range and snapped
+  to its increment (width steps by 4), and any adjustment is printed.
+
 Auto thresholding is a 1-D 2-means split of the per-frame mean intensity. If the
 distribution isn't clearly bimodal the script says so — that usually means the
 exposure is long enough to average over the flicker, so shorten it.

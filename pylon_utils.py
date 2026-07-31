@@ -48,8 +48,93 @@ def _try_get(cam, names):
     return None
 
 
+def _set_int(cam, name, value, label=None):
+    """Set an integer node, clamped to [Min, Max] and snapped to its increment.
+
+    Width/Height/Offset* all advertise an increment (4 px on the ace USB models),
+    and writing an off-grid value throws instead of rounding, so do it here.
+    """
+    node = getattr(cam, name, None)
+    if node is None:
+        return None
+    try:
+        if not genicam.IsWritable(node):
+            return None
+        lo, hi = node.GetMin(), node.GetMax()
+        try:
+            inc = max(1, node.GetInc())
+        except genicam.GenericException:
+            inc = 1
+        wanted = int(value)
+        v = min(max(wanted, lo), hi)
+        v = lo + ((v - lo) // inc) * inc
+        node.SetValue(v)
+        if v != wanted:
+            print(f"  {label or name}: {wanted} -> {v} "
+                  f"(range {lo}-{hi}, step {inc})")
+        return v
+    except genicam.GenericException as exc:
+        print(f"  ! {label or name}: {exc}", file=sys.stderr)
+        return None
+
+
+def configure_roi(cam, width=None, height=None, offset_x=None, offset_y=None,
+                  binning=None, binning_mode="Average", full=False):
+    """Apply binning and the area-of-interest — the pylon Viewer 'resolution' box.
+
+    Order matters: binning changes the Width/Height maxima, and a non-zero offset
+    caps how far Width/Height can grow, so offsets are zeroed first and applied
+    last. A smaller AOI also raises the camera's max frame rate (fewer rows to
+    read out), which is why this is worth exposing.
+    """
+    # The camera keeps these settings across process restarts, so "full" has to
+    # undo any leftover binning or it just returns the full *binned* frame.
+    if full and binning is None:
+        binning = 1
+
+    if binning is not None:
+        # Sum brightens as it bins, Average keeps the intensity scale — which
+        # matters here, since the black-frame threshold is an intensity.
+        _try_set(cam, ["BinningHorizontalMode"], binning_mode)
+        _try_set(cam, ["BinningVerticalMode"], binning_mode)
+        _set_int(cam, "BinningHorizontal", binning, label="binning h")
+        _set_int(cam, "BinningVertical", binning, label="binning v")
+
+    # Auto-centering locks the offset nodes; turn it off before touching them.
+    _try_set(cam, ["CenterX"], False)
+    _try_set(cam, ["CenterY"], False)
+    _set_int(cam, "OffsetX", 0)
+    _set_int(cam, "OffsetY", 0)
+
+    if full:
+        width = getattr(cam, "Width", None) and cam.Width.GetMax()
+        height = getattr(cam, "Height", None) and cam.Height.GetMax()
+
+    if width is not None:
+        _set_int(cam, "Width", width, label="width")
+    if height is not None:
+        _set_int(cam, "Height", height, label="height")
+
+    # Offsets default to centred, which is almost always what you want when you
+    # shrink the AOI to get a higher frame rate.
+    for axis, requested in (("OffsetX", offset_x), ("OffsetY", offset_y)):
+        node = getattr(cam, axis, None)
+        if node is None or not genicam.IsWritable(node):
+            continue
+        if requested is None:
+            if width is not None or height is not None or full:
+                _set_int(cam, axis, node.GetMax() // 2, label=f"{axis} (centred)")
+        else:
+            _set_int(cam, axis, requested, label=axis.lower())
+
+    return (_try_get(cam, ["Width"]), _try_get(cam, ["Height"]),
+            _try_get(cam, ["OffsetX"]), _try_get(cam, ["OffsetY"]))
+
+
 def open_camera(serial=None, exposure_us=None, gain=None, fps=None,
-                pixel_format="Mono8", verbose=True):
+                pixel_format="Mono8", width=None, height=None, offset_x=None,
+                offset_y=None, binning=None, binning_mode="Average",
+                full=False, verbose=True):
     """Open and configure the camera. Caller is responsible for cam.Close()."""
     tlf = pylon.TlFactory.GetInstance()
     devices = tlf.EnumerateDevices()
@@ -83,6 +168,13 @@ def open_camera(serial=None, exposure_us=None, gain=None, fps=None,
 
     _try_set(cam, ["PixelFormat"], pixel_format)
 
+    roi_requested = any(v is not None for v in
+                        (width, height, offset_x, offset_y, binning)) or full
+    if roi_requested:
+        configure_roi(cam, width=width, height=height, offset_x=offset_x,
+                      offset_y=offset_y, binning=binning,
+                      binning_mode=binning_mode, full=full)
+
     # Auto exposure / gain would fight the flicker we are trying to measure,
     # so both are forced off whenever the user pins a value.
     if exposure_us is not None:
@@ -103,10 +195,63 @@ def open_camera(serial=None, exposure_us=None, gain=None, fps=None,
         g = _try_get(cam, ["Gain", "GainRaw"])
         rate = _try_get(cam, ["ResultingFrameRate", "ResultingFrameRateAbs"])
         pf = _try_get(cam, ["PixelFormat"])
+        w = _try_get(cam, ["Width"])
+        h = _try_get(cam, ["Height"])
+        ox, oy = _try_get(cam, ["OffsetX"]), _try_get(cam, ["OffsetY"])
+        bh, bv = _try_get(cam, ["BinningHorizontal"]), _try_get(cam, ["BinningVertical"])
+        is_binned = (bh or 1) > 1 or (bv or 1) > 1
+        binned = f", binning {bh}x{bv}" if is_binned else ""
+        print(f"  {w}x{h} at offset ({ox}, {oy}){binned}")
+        if is_binned and binning is None:
+            print("  note: binning was left over from an earlier run (the camera "
+                  "keeps it) — pass --full or --binning 1 to reset")
         print(f"  pixel format {pf}, exposure {exp} us, gain {g}, "
               f"resulting rate {rate if rate is None else round(rate, 2)} fps")
 
     return cam
+
+
+# --------------------------------------------------------------------------- #
+# shared CLI arguments
+# --------------------------------------------------------------------------- #
+
+def add_camera_args(parser):
+    """Camera options common to both scripts, so they cannot drift apart."""
+    g = parser.add_argument_group("camera")
+    g.add_argument("--serial", default=None, help="camera serial number")
+    g.add_argument("--exposure", type=float, default=None,
+                   help="exposure time in microseconds (also disables auto exposure)")
+    g.add_argument("--gain", type=float, default=None, help="gain in dB")
+    g.add_argument("--fps", type=float, default=None, help="cap the frame rate")
+    g.add_argument("--pixel-format", default="Mono8",
+                   help="pixel format (default Mono8)")
+    g.add_argument("--width", type=int, default=None,
+                   help="AOI width in px (max 1936, step 4); snapped to the "
+                        "camera's step and clamped to its range")
+    g.add_argument("--height", type=int, default=None,
+                   help="AOI height in px (max 1216); fewer rows = higher max "
+                        "frame rate, e.g. 640x480 runs at ~99 fps")
+    g.add_argument("--offset-x", type=int, default=None,
+                   help="AOI x offset (default: centred when width is given)")
+    g.add_argument("--offset-y", type=int, default=None,
+                   help="AOI y offset (default: centred when height is given)")
+    g.add_argument("--binning", type=int, default=None, choices=[1, 2, 3, 4],
+                   help="combine NxN pixels: smaller image, better SNR")
+    g.add_argument("--binning-mode", default="Average", choices=["Average", "Sum"],
+                   help="Average keeps the intensity scale (default), Sum brightens")
+    g.add_argument("--full", action="store_true",
+                   help="full sensor (1936x1216), offsets zeroed and binning "
+                        "reset to 1 — the camera remembers these between runs")
+    return parser
+
+
+def camera_kwargs(args):
+    """Map parsed args onto open_camera()'s keyword arguments."""
+    return dict(serial=args.serial, exposure_us=args.exposure, gain=args.gain,
+                fps=args.fps, pixel_format=args.pixel_format, width=args.width,
+                height=args.height, offset_x=args.offset_x,
+                offset_y=args.offset_y, binning=args.binning,
+                binning_mode=args.binning_mode, full=args.full)
 
 
 def grab_frames(cam, strategy=pylon.GrabStrategy_OneByOne, timeout_ms=5000):

@@ -7,6 +7,7 @@ to find one automatically (same 2-means split as capture_frames.py).
 
     python deflicker_live.py --exposure 5000
     python deflicker_live.py --threshold 12.5 --scale 0.5 --record out.avi
+    python deflicker_live.py --width 640 --height 480      # ~99 fps instead of 41
 
 Keys:  q/Esc quit   r recalibrate   [ / ] lower/raise threshold
        s save a snapshot   space toggle deflicker on/off (to see the raw flicker)
@@ -21,7 +22,8 @@ import cv2
 import numpy as np
 from pypylon import pylon
 
-from pylon_utils import frame_score, grab_frames, open_camera, suggest_threshold
+from pylon_utils import (add_camera_args, camera_kwargs, frame_score,
+                         grab_frames, open_camera, suggest_threshold)
 
 
 def parse_args():
@@ -33,15 +35,13 @@ def parse_args():
                    help="frames used for auto threshold when none is given")
     p.add_argument("--margin", type=float, default=0.0,
                    help="add this to the auto threshold (raise to drop more)")
-    p.add_argument("--scale", type=float, default=0.5, help="display scale factor")
-    p.add_argument("--exposure", type=float, default=None, help="exposure in us")
-    p.add_argument("--gain", type=float, default=None, help="gain in dB")
-    p.add_argument("--fps", type=float, default=None, help="cap the frame rate")
-    p.add_argument("--serial", default=None, help="camera serial number")
+    p.add_argument("--scale", type=float, default=0.5,
+                   help="initial window size as a fraction of the frame")
     p.add_argument("--record", default=None,
                    help="write the deflickered stream to this .avi file")
     p.add_argument("--record-fps", type=float, default=None,
                    help="frame rate stamped into the recording (default: measured)")
+    add_camera_args(p)
     return p.parse_args()
 
 
@@ -105,8 +105,7 @@ def overlay(image, lines):
 
 def main():
     args = parse_args()
-    cam = open_camera(serial=args.serial, exposure_us=args.exposure,
-                      gain=args.gain, fps=args.fps)
+    cam = open_camera(**camera_kwargs(args))
 
     window = "deflickered"
     # Resizable; aspect ratio is preserved by fit_letterbox, not by a flag.

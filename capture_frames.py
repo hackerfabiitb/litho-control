@@ -19,8 +19,8 @@ import time
 import cv2
 import numpy as np
 
-from pylon_utils import (frame_score, grab_frames, histogram, open_camera,
-                         suggest_threshold)
+from pylon_utils import (add_camera_args, camera_kwargs, frame_score,
+                         grab_frames, histogram, open_camera, suggest_threshold)
 
 
 def parse_args():
@@ -32,21 +32,16 @@ def parse_args():
                    help="image file format (default png)")
     p.add_argument("--save", default="all", choices=["all", "black", "none"],
                    help="which frames to write to disk (default all)")
-    p.add_argument("--exposure", type=float, default=None,
-                   help="exposure time in microseconds (also disables auto exposure)")
-    p.add_argument("--gain", type=float, default=None, help="gain in dB")
-    p.add_argument("--fps", type=float, default=None, help="cap the frame rate")
-    p.add_argument("--serial", default=None, help="camera serial number")
     p.add_argument("--threshold", type=float, default=None,
                    help="mean-intensity cutoff for 'black'; default is auto")
+    add_camera_args(p)
     return p.parse_args()
 
 
 def main():
     args = parse_args()
 
-    cam = open_camera(serial=args.serial, exposure_us=args.exposure,
-                      gain=args.gain, fps=args.fps)
+    cam = open_camera(**camera_kwargs(args))
     frames, stats = [], []
     t0 = time.perf_counter()
     try:
