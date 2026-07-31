@@ -62,14 +62,22 @@ def open_camera(serial=None, exposure_us=None, gain=None, fps=None,
         if not match:
             found = ", ".join(d.GetSerialNumber() for d in devices)
             raise RuntimeError(f"Serial {serial} not found. Available: {found}")
-        device = tlf.CreateDevice(match[0])
+        info = match[0]
     else:
-        device = tlf.CreateDevice(devices[0])
+        info = devices[0]
 
-    cam = pylon.InstantCamera(device)
-    cam.Open()
+    try:
+        cam = pylon.InstantCamera(tlf.CreateDevice(info))
+        cam.Open()
+    except genicam.GenericException as exc:
+        if "exclusively opened" in str(exc):
+            raise RuntimeError(
+                f"{info.GetModelName()} ({info.GetSerialNumber()}) is already "
+                "open in another process — a USB3 Basler allows only one client "
+                "at a time. Close pylon Viewer (or the other script) and retry."
+            ) from exc
+        raise
 
-    info = cam.GetDeviceInfo()
     if verbose:
         print(f"Camera: {info.GetModelName()}  serial {info.GetSerialNumber()}")
 

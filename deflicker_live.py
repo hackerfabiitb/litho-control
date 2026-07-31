@@ -45,15 +45,61 @@ def parse_args():
     return p.parse_args()
 
 
+FONT = cv2.FONT_HERSHEY_SIMPLEX
+
+
+def fit_letterbox(frame, win_w, win_h):
+    """Scale `frame` to fit win_w x win_h without distortion, padding with black.
+
+    cv2.WINDOW_KEEPRATIO is 0 — a no-op — and the Windows HighGUI backend
+    stretches whatever it is handed across the full client area. Handing it a
+    canvas that already matches the window means the blit is 1:1 and the aspect
+    ratio survives being dragged into any shape.
+    """
+    h, w = frame.shape[:2]
+    scale = min(win_w / w, win_h / h)
+    new_w, new_h = max(1, round(w * scale)), max(1, round(h * scale))
+    interp = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+    resized = cv2.resize(frame, (new_w, new_h), interpolation=interp)
+    if new_w == win_w and new_h == win_h:
+        return resized
+
+    shape = (win_h, win_w) if frame.ndim == 2 else (win_h, win_w, frame.shape[2])
+    canvas = np.zeros(shape, dtype=frame.dtype)
+    x0, y0 = (win_w - new_w) // 2, (win_h - new_h) // 2
+    canvas[y0:y0 + new_h, x0:x0 + new_w] = resized
+    return canvas
+
+
 def overlay(image, lines):
-    """Draw status text with a dark outline so it reads on any background."""
+    """Draw a status panel: single-weight text on a translucent dark strip.
+
+    Called on the already-scaled display image, so the glyphs are rasterised at
+    the size they are shown at. Font size tracks the image width so the panel
+    stays legible at any --scale.
+    """
     canvas = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR) if image.ndim == 2 else image.copy()
+    if not lines:
+        return canvas
+
+    h, w = canvas.shape[:2]
+    scale = min(0.9, max(0.4, w / 1400.0))
+    thickness = 2 if scale >= 0.7 else 1
+    pad = max(6, int(8 * scale / 0.6))
+
+    (_, text_h), baseline = cv2.getTextSize("Ag", FONT, scale, thickness)
+    line_h = text_h + baseline + pad // 2
+    panel_h = min(h, pad * 2 + line_h * len(lines))
+    text_w = max(cv2.getTextSize(t, FONT, scale, thickness)[0][0] for t in lines)
+    panel_w = min(w, text_w + pad * 2)
+
+    roi = canvas[:panel_h, :panel_w]
+    canvas[:panel_h, :panel_w] = cv2.addWeighted(roi, 0.35,
+                                                 np.zeros_like(roi), 0.65, 0)
     for i, text in enumerate(lines):
-        origin = (10, 25 + 22 * i)
-        cv2.putText(canvas, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                    (0, 0, 0), 3, cv2.LINE_AA)
-        cv2.putText(canvas, text, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                    (0, 255, 0), 1, cv2.LINE_AA)
+        y = pad + line_h * (i + 1) - baseline
+        cv2.putText(canvas, text, (pad, y), FONT, scale, (0, 255, 0),
+                    thickness, cv2.LINE_AA)
     return canvas
 
 
@@ -62,8 +108,11 @@ def main():
     cam = open_camera(serial=args.serial, exposure_us=args.exposure,
                       gain=args.gain, fps=args.fps)
 
-    window = "deflickered (q quit, r recalibrate, [ ] threshold, space raw)"
+    window = "deflickered"
+    # Resizable; aspect ratio is preserved by fit_letterbox, not by a flag.
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+    window_sized = False
+    print("keys: q quit | r recalibrate | [ ] threshold | space raw | s snapshot")
 
     threshold = args.threshold
     calibrating = threshold is None
@@ -128,10 +177,18 @@ def main():
             if display is None:      # still waiting for the first lit frame
                 continue
 
-            if args.scale != 1.0:
-                shown = cv2.resize(display, None, fx=args.scale, fy=args.scale,
-                                   interpolation=cv2.INTER_AREA)
-            else:
+            if not window_sized:
+                # --scale only picks the starting size; the window is resizable
+                # afterwards and fit_letterbox holds the aspect ratio.
+                fh, fw = display.shape[:2]
+                cv2.resizeWindow(window, round(fw * args.scale),
+                                 round(fh * args.scale))
+                window_sized = True
+
+            rect = cv2.getWindowImageRect(window)   # (x, y, w, h)
+            if rect[2] > 0 and rect[3] > 0:
+                shown = fit_letterbox(display, rect[2], rect[3])
+            else:                                   # window closed or unmapped
                 shown = display
 
             in_rate = total / max(time.perf_counter() - t_start, 1e-6)
