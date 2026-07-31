@@ -5,11 +5,34 @@ light source.
 
 ## Setup
 
-Already done in this folder — a venv with `pypylon`, `opencv-python`, `numpy`:
+**Prerequisite:** install the Basler **pylon SDK** first (it ships the USB3
+driver and runtime that `pypylon` binds to). Without it `import pypylon` fails.
+
+Create the venv and install the dependencies:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Optionally activate it so you can just type `python`:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+# if PowerShell blocks the script:
+#   Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+```
+
+Check that the camera is visible:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "from pypylon import pylon; print(pylon.TlFactory.GetInstance().EnumerateDevices()[0].GetModelName())"
+# -> acA1920-40um
 ```
+
+This folder already has a `.venv` set up with pypylon 26.7, opencv-python 5.0.0.93
+and numpy 2.5.1.
 
 Only one process can hold a USB3 Basler camera at a time — **close pylon Viewer
 before running these scripts**, or you get
@@ -64,6 +87,11 @@ calibrates on the first 60 frames (`--calib`).
 
 The overlay shows current mean vs threshold, kept/total, recent drop
 percentage, and input vs output frame rate.
+
+`--scale` sets the *initial* window size only. The window is freely resizable
+and the image keeps its aspect ratio, letterboxed with black bars — note that
+this is done in code, not by `cv2.WINDOW_KEEPRATIO`, which is `0` (a no-op) and
+leaves the Windows HighGUI backend stretching the image to fill the window.
 
 `--record out.avi` writes the deflickered (kept-only) stream to an MJPG file.
 

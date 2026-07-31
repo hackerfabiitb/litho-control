@@ -1,0 +1,9 @@
+# Python 3.12, Windows 11. Tested versions in comments — the >= pins let you
+# upgrade, but if something breaks, fall back to exactly these.
+#
+# pypylon needs a matching Basler pylon runtime installed system-wide
+# (C:\Program Files\Basler\pylon). Install the pylon SDK first.
+
+pypylon>=4.0          # tested: 26.7
+opencv-python>=4.8    # tested: 5.0.0.93
+numpy>=1.26           # tested: 2.5.1
