@@ -5,6 +5,7 @@ older GigE/USB node names where they differ.
 """
 
 import sys
+from typing import NamedTuple
 
 import numpy as np
 from pypylon import genicam, pylon
@@ -245,6 +246,22 @@ def add_camera_args(parser):
     return parser
 
 
+def add_threshold_args(parser):
+    """The keep-band flags, shared so both scripts spell them the same way."""
+    g = parser.add_argument_group("black / blown-out thresholds")
+    g.add_argument("--threshold-low", "--threshold", type=float, default=None,
+                   dest="threshold_low",
+                   help="drop frames with mean intensity below this (black "
+                        "frames); default is auto. --threshold is an alias.")
+    g.add_argument("--threshold-high", type=float, default=None,
+                   help="drop frames with mean intensity above this (blown-out "
+                        "frames); default is auto, and is only applied when "
+                        "genuinely saturated frames are detected")
+    g.add_argument("--no-high", action="store_true",
+                   help="never drop bright frames, whatever the auto split says")
+    return parser
+
+
 def camera_kwargs(args):
     """Map parsed args onto open_camera()'s keyword arguments."""
     return dict(serial=args.serial, exposure_us=args.exposure, gain=args.gain,
@@ -288,18 +305,28 @@ def grab_frames(cam, strategy=pylon.GrabStrategy_OneByOne, timeout_ms=5000):
 # brightness scoring
 # --------------------------------------------------------------------------- #
 
-def frame_score(frame):
-    """Brightness score used to separate lit frames from black ones.
+def full_scale(frame):
+    """Largest value a pixel can hold, for the formats this camera produces."""
+    if frame.dtype == np.uint8:          # Mono8
+        return 255.0
+    return 4095.0                        # Mono12 / Mono12p, right-aligned in uint16
 
-    Mean intensity is the primary signal; it is stable and cheap. p99 is also
-    returned because a frame can be mostly dark background yet still contain a
-    lit feature.
+
+def frame_score(frame):
+    """Brightness scores: (mean, p99, max, saturated fraction).
+
+    Mean intensity is the primary signal for both cutoffs; it is stable and
+    cheap. p99 catches a frame that is mostly dark background but holds a lit
+    feature, and the saturated fraction — pixels within ~2% of full scale — is
+    what actually distinguishes a blown-out frame from a merely bright one.
     """
     flat = frame.reshape(-1)
     # Subsample large frames: 1920x1200 mean over every 4th pixel is within
     # noise of the full mean and ~4x cheaper.
     sub = flat[::4] if flat.size > 200_000 else flat
-    return float(sub.mean()), float(np.percentile(sub, 99)), float(sub.max())
+    fs = full_scale(frame)
+    sat = float((sub >= 0.98 * fs).mean())
+    return float(sub.mean()), float(np.percentile(sub, 99)), float(sub.max()), sat
 
 
 def suggest_threshold(means):
@@ -333,6 +360,50 @@ def suggest_threshold(means):
     # signature of true on/off flicker rather than ordinary brightness noise.
     bimodal = (c1 > 5 * max(c0, 0.1)) or (c1 - c0 > 10)
     return float(threshold), float(c0), float(c1), bool(bimodal)
+
+
+class Band(NamedTuple):
+    """The keep-band: a frame is good when low <= mean <= high."""
+    low: float
+    high: float
+    dark: float          # centre of the black-frame cluster
+    lit: float           # centre of the usable cluster
+    blown: float         # centre of the blown-out cluster (nan if none found)
+    bimodal: bool        # was the black/lit split clean?
+    blown_found: bool
+
+
+def suggest_band(means, sat_fracs=None, scale=255.0):
+    """Pick both cutoffs: below `low` is black, above `high` is blown out.
+
+    `low` is the black/lit split. `high` is found by re-splitting only the
+    non-black frames, and is accepted just when the upper cluster really is
+    near saturation — otherwise a run with no blown frames would have its
+    brightest good frames thrown away. When per-frame saturated fractions are
+    given they get the final say, since "most of the sensor is pegged at full
+    scale" is a far more direct test of blown-out than a high mean is.
+    """
+    means = np.asarray(means, dtype=float)
+    low, dark_c, lit_c, bimodal = suggest_threshold(means)
+
+    lit = means[means >= low]
+    high, blown_c, found = float("inf"), float("nan"), False
+    if lit.size >= 4:
+        split, c_ok, c_blown, split_bimodal = suggest_threshold(lit)
+        near_full = c_blown >= 0.90 * scale
+        if sat_fracs is not None:
+            sat = np.asarray(sat_fracs, dtype=float)[means >= low]
+            # Blown out means the upper cluster is mostly pegged while the
+            # lower one is not; without that contrast it is just a bright scene.
+            upper, lower = sat[lit > split], sat[lit <= split]
+            near_full = (upper.size > 0 and upper.mean() > 0.5
+                         and (lower.size == 0 or lower.mean() < 0.2))
+        if split_bimodal and near_full:
+            high, blown_c, found = split, c_blown, True
+            lit_c = c_ok
+
+    return Band(float(low), float(high), float(dark_c), float(lit_c),
+                float(blown_c), bool(bimodal), bool(found))
 
 
 def histogram(means, bins=20, width=50):

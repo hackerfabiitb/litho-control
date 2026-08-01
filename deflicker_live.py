@@ -1,16 +1,19 @@
-"""Step 2: live view with black (flicker) frames dropped.
+"""Step 2: live view with black and blown-out frames dropped.
 
-Every grabbed frame is scored by mean intensity; frames below the threshold are
-discarded and the previous good frame stays on screen, so the display is steady
-instead of strobing. If no threshold is given the first --calib frames are used
-to find one automatically (same 2-means split as capture_frames.py).
+Every grabbed frame is scored by mean intensity and kept only if it lands inside
+the band [--threshold-low, --threshold-high]: too dark is a black flicker frame,
+too bright is a blown-out one. Dropped frames leave the previous good frame on
+screen, so the display is steady instead of strobing. Without thresholds the
+first --calib frames are used to find the band (same split as capture_frames.py).
 
     python deflicker_live.py --exposure 5000
-    python deflicker_live.py --threshold 12.5 --scale 0.5 --record out.avi
+    python deflicker_live.py --threshold-low 150 --threshold-high 240 --scale 0.5
     python deflicker_live.py --width 640 --height 480      # ~99 fps instead of 41
 
-Keys:  q/Esc quit   r recalibrate   [ / ] lower/raise threshold
-       s save a snapshot   space toggle deflicker on/off (to see the raw flicker)
+Keys:  q/Esc quit   r recalibrate   s save a snapshot
+       [ / ]  lower / raise the low cutoff
+       { / }  lower / raise the high cutoff  (shift + [ / ])
+       space  toggle deflicker off/on, to see the raw flicker
 """
 
 import argparse
@@ -22,25 +25,26 @@ import cv2
 import numpy as np
 from pypylon import pylon
 
-from pylon_utils import (add_camera_args, camera_kwargs, frame_score,
-                         grab_frames, open_camera, suggest_threshold)
+from pylon_utils import (add_camera_args, add_threshold_args, camera_kwargs,
+                         frame_score, full_scale, grab_frames, open_camera,
+                         suggest_band)
 
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--threshold", type=float, default=None,
-                   help="mean-intensity cutoff; below this a frame is dropped")
     p.add_argument("--calib", type=int, default=60,
-                   help="frames used for auto threshold when none is given")
+                   help="frames used for the auto band when none is given")
     p.add_argument("--margin", type=float, default=0.0,
-                   help="add this to the auto threshold (raise to drop more)")
+                   help="widen the auto cutoffs inwards by this much "
+                        "(raise to drop more marginal frames)")
     p.add_argument("--scale", type=float, default=0.5,
                    help="initial window size as a fraction of the frame")
     p.add_argument("--record", default=None,
                    help="write the deflickered stream to this .avi file")
     p.add_argument("--record-fps", type=float, default=None,
                    help="frame rate stamped into the recording (default: measured)")
+    add_threshold_args(p)
     add_camera_args(p)
     return p.parse_args()
 
@@ -111,17 +115,22 @@ def main():
     # Resizable; aspect ratio is preserved by fit_letterbox, not by a flag.
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
     window_sized = False
-    print("keys: q quit | r recalibrate | [ ] threshold | space raw | s snapshot")
+    print("keys: q quit | r recalibrate | [ ] low cutoff | { } high cutoff | "
+          "space raw | s snapshot")
 
-    threshold = args.threshold
-    calibrating = threshold is None
-    calib_means = []
+    low = args.threshold_low
+    high = float("inf") if args.no_high else args.threshold_high
+    # Only calibrate what the user did not pin. --no-high counts as pinned.
+    calibrating = low is None or high is None
+    calib_means, calib_sats = [], []
     if calibrating:
         print(f"Calibrating on the first {args.calib} frames...")
 
     last_good = None
     deflicker_on = True
+    unreliable = False               # auto split found only one population
     total = kept = 0
+    n_black = n_blown = 0
     recent = deque(maxlen=120)       # (is_kept,) over the last ~3 s
     kept_times = deque(maxlen=60)
     writer = None
@@ -132,31 +141,49 @@ def main():
         # LatestImageOnly: if the display falls behind, skip ahead rather than
         # showing a growing lag.
         for _, frame, _ in grab_frames(cam, pylon.GrabStrategy_LatestImageOnly):
-            mean, _, _ = frame_score(frame)
+            mean, _, _, sat = frame_score(frame)
             total += 1
 
             if calibrating:
                 calib_means.append(mean)
+                calib_sats.append(sat)
                 if len(calib_means) >= args.calib:
-                    auto, dark_c, bright_c, bimodal = suggest_threshold(calib_means)
-                    threshold = auto + args.margin
+                    band = suggest_band(calib_means, calib_sats,
+                                        scale=full_scale(frame))
+                    # Whatever the user pinned on the command line wins.
+                    if args.threshold_low is None:
+                        low = band.low + args.margin
+                    if high is None:
+                        high = (band.high - args.margin if band.blown_found
+                                else float("inf"))
                     calibrating = False
-                    print(f"  dark {dark_c:.2f} / bright {bright_c:.2f} "
-                          f"-> threshold {threshold:.2f}")
-                    if not bimodal:
-                        print("  WARNING: brightness is not clearly bimodal; "
-                              "set --threshold manually if the result is wrong.")
+                    unreliable = not band.bimodal
+                    print(f"  dark {band.dark:.2f} / lit {band.lit:.2f}"
+                          + (f" / blown {band.blown:.2f}" if band.blown_found else "")
+                          + f"  ->  keep {low:.2f} .. "
+                          + ("inf" if high == float("inf") else f"{high:.2f}"))
+                    if not band.blown_found and high == float("inf"):
+                        print("  no saturated cluster in the calibration frames — "
+                              "nothing is dropped as blown out. Use "
+                              "--threshold-high to set one by hand.")
+                    if not band.bimodal:
+                        print("  WARNING: brightness is not clearly bimodal; set "
+                              "--threshold-low manually if the result is wrong.")
                 # Show raw frames while calibrating so there is something on screen.
-                display, is_black = frame, False
+                display, is_black, is_blown = frame, False, False
             else:
-                is_black = mean < threshold
-                if is_black and deflicker_on:
+                is_black = mean < low
+                is_blown = mean > high
+                n_black += is_black
+                n_blown += is_blown
+                if (is_black or is_blown) and deflicker_on:
                     display = last_good
                 else:
                     last_good = frame
                     display = frame
 
-            if not calibrating and not (is_black and deflicker_on):
+            dropped = (is_black or is_blown) and deflicker_on
+            if not calibrating and not dropped:
                 kept += 1
                 kept_times.append(time.perf_counter())
                 if writer is None and args.record:
@@ -171,7 +198,7 @@ def main():
                         writer = None
                 if writer is not None:
                     writer.write(frame)
-            recent.append(0 if (is_black and deflicker_on and not calibrating) else 1)
+            recent.append(0 if (dropped and not calibrating) else 1)
 
             if display is None:      # still waiting for the first lit frame
                 continue
@@ -196,26 +223,46 @@ def main():
                 span = kept_times[-1] - kept_times[0]
                 out_rate = (len(kept_times) - 1) / span if span > 0 else 0.0
             drop_pct = 100.0 * (1 - np.mean(recent)) if recent else 0.0
+            hi_text = "inf" if high in (None, float("inf")) else f"{high:.1f}"
+            state = ("   [CALIBRATING]" if calibrating else
+                     "   DROPPED: BLACK" if is_black and deflicker_on else
+                     "   DROPPED: BLOWN" if is_blown and deflicker_on else "")
             status = [
-                f"mean {mean:7.2f}   threshold {threshold if threshold else 0:.2f}"
-                + ("   [CALIBRATING]" if calibrating else
-                   ("   DROPPED" if is_black and deflicker_on else "")),
-                f"kept {kept}/{total}   dropping {drop_pct:4.1f}% (recent)",
+                f"mean {mean:7.2f}   keep {low if low else 0:.1f} .. {hi_text}"
+                + state,
+                f"kept {kept}/{total}   dropping {drop_pct:4.1f}% (recent)   "
+                f"black {n_black}  blown {n_blown}",
                 f"in {in_rate:5.1f} fps -> out {out_rate:5.1f} fps"
                 + ("   DEFLICKER OFF" if not deflicker_on else ""),
             ]
+            if unreliable and args.threshold_low is None:
+                # One brightness population: the auto low cutoff has split good
+                # frames in half rather than found a flicker.
+                status.append("auto cutoff unreliable - set --threshold-low")
             cv2.imshow(window, overlay(shown, status))
 
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
                 break
             elif key == ord("r"):
-                calibrating, calib_means = True, []
+                calibrating = True
+                calib_means, calib_sats = [], []
+                if args.threshold_low is None:
+                    low = None
+                if args.threshold_high is None and not args.no_high:
+                    high = None
                 print("recalibrating...")
             elif key == ord("["):
-                threshold = max(0.0, (threshold or 0) - 1.0)
+                low = max(0.0, (low or 0) - 1.0)
             elif key == ord("]"):
-                threshold = (threshold or 0) + 1.0
+                low = (low or 0) + 1.0
+            elif key == ord("{"):
+                # Coming down from inf, start at full scale rather than jumping
+                # to 254 and dropping half the stream.
+                base = full_scale(frame) if high == float("inf") else high
+                high = max((low or 0) + 1.0, base - 1.0)
+            elif key == ord("}"):
+                high = full_scale(frame) if high == float("inf") else high + 1.0
             elif key == ord(" "):
                 deflicker_on = not deflicker_on
             elif key == ord("s"):
@@ -234,7 +281,8 @@ def main():
 
     if total:
         print(f"\n{kept}/{total} frames kept "
-              f"({100.0 * (total - kept) / total:.1f}% dropped as black)")
+              f"({100.0 * (total - kept) / total:.1f}% dropped: "
+              f"{n_black} black, {n_blown} blown out)")
     return 0
 
 

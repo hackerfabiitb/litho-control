@@ -46,12 +46,13 @@ before running these scripts**, or you get
 
 Grabs 120 frames into RAM (so PNG encoding can't cause dropped frames), then writes:
 
-- `frames/frame_00007_black_mean001.23.png` — every frame, labelled `black`/`lit`
-  with its mean intensity in the filename
-- `frames/frame_stats.csv` — per-frame `mean`, `p99`, `max`, `is_black`, timestamp
+- `frames/frame_00007_black_mean001.23.png` — every frame, labelled
+  `black`/`blown`/`lit` with its mean intensity in the filename
+- `frames/frame_stats.csv` — per-frame `mean`, `p99`, `max`, `sat_frac`,
+  `is_black`, `is_blown`, timestamp
 
-and prints a histogram of mean intensity, the two cluster centres, the
-**fraction of frames that are black**, and the longest consecutive black run.
+and prints a histogram of mean intensity, the cluster centres, the **fraction of
+frames that are black and blown out**, and the longest consecutive dropped run.
 
 Useful flags:
 
@@ -60,8 +61,42 @@ Useful flags:
 | `--exposure 5000` | pin exposure to 5000 µs and disable auto exposure |
 | `--gain 6` | pin gain (dB) |
 | `--fps 30` | cap the acquisition rate |
-| `--save black` | only write the black frames (or `none` for stats only) |
-| `--threshold 12.5` | override the auto black/lit cutoff |
+| `--save black` | write only the black frames (also `blown`, `dropped`, `none`) |
+
+## Black and blown-out frames
+
+A frame is kept when its mean intensity lands inside the band
+`--threshold-low .. --threshold-high`: below the low cutoff it is a black flicker
+frame, above the high cutoff it is blown out (fully white). Both default to auto
+and both scripts take the same flags.
+
+| flag | effect |
+| --- | --- |
+| `--threshold-low 107` | black cutoff (`--threshold` is kept as an alias) |
+| `--threshold-high 206` | blown-out cutoff |
+| `--no-high` | never drop bright frames, whatever the auto split says |
+
+`low` is the 2-means split of the per-frame means. `high` is found by
+re-splitting only the non-black frames, and is applied **only when the upper
+cluster is genuinely saturated** — most of its pixels pegged within 2% of full
+scale, while the lower cluster is not. Without that guard a run containing no
+blown frames would have its brightest good frames discarded; with it, a merely
+bright scene keeps every frame and the script reports "no saturated cluster
+found".
+
+Measured here at `--exposure 500`, all three populations show up cleanly:
+
+```
+  dark cluster centre   3.42
+  lit cluster centre    159.03
+  blown cluster centre  253.53
+  suggested low  cutoff 107.00
+  suggested high cutoff 206.28
+
+  BLACK FRAMES: 29 / 40 = 72.5%
+  BLOWN FRAMES:  6 / 40 = 15.0%
+  USABLE:        5 / 40 = 12.5%
+```
 
 ## Resolution / AOI
 
@@ -114,13 +149,17 @@ calibrates on the first 60 frames (`--calib`).
 | key | action |
 | --- | --- |
 | `q` / `Esc` | quit |
-| `r` | recalibrate the threshold |
-| `[` / `]` | lower / raise threshold by 1 |
+| `r` | recalibrate (only the cutoffs you did not pin on the command line) |
+| `[` / `]` | lower / raise the **low** cutoff by 1 |
+| `{` / `}` | lower / raise the **high** cutoff by 1 (shift + `[` / `]`) |
 | `space` | toggle deflicker off/on to compare against the raw flicker |
 | `s` | save a snapshot PNG |
 
-The overlay shows current mean vs threshold, kept/total, recent drop
-percentage, and input vs output frame rate.
+The overlay shows the current mean against the keep band, kept/total, recent drop
+percentage, separate black and blown counts, and input vs output frame rate. A
+dropped frame is labelled `DROPPED: BLACK` or `DROPPED: BLOWN`, and if the auto
+split found only one brightness population the overlay says so rather than
+silently throwing away half the good frames.
 
 `--scale` sets the *initial* window size only. The window is freely resizable
 and the image keeps its aspect ratio, letterboxed with black bars — note that
