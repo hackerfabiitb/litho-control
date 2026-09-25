@@ -7,7 +7,7 @@ a camera watches it, and an XYZ stage moves the sample.
 | --- | --- | --- |
 | [`camera/`](camera/README.md) | Basler acA1920-40um (USB3, mono) | live view with DLP flicker removed; flicker measurement |
 | [`projector/`](projector/README.md) | TI DLP471TPEVM over HDMI + USB | test patterns, camera-to-DMD calibration, DMD fault scan |
-| [`xyz_stage/`](xyz_stage/README.md) | Arduino Uno + stepper shield, 3 steppers (COM4) | `xyz1` firmware flashed; browser UI (Web Serial) from litho-ui |
+| [`xyz_stage/`](xyz_stage/README.md) | Arduino Uno + CNC Shield V3, 3 × DRV8825, 3 steppers (COM4) | `xyz1` firmware (drivers powered only while moving); browser UI (Web Serial) from litho-ui |
 
 ## Setup
 
@@ -50,6 +50,7 @@ Newest first. The details are in each directory's README.
 
 | date | area | issue | status |
 | --- | --- | --- | --- |
+| 2026-09-25 | xyz_stage | DRV8825s squeal whenever powered, idle included. The firmware now powers them only during moves, so idle is silent (user confirmed); a brief squeal remains during moves. [Details](xyz_stage/README.md#2026-09-25--drv8825-squeal--idle-fixed-during-moves-open-hardware) | idle fixed; for moves: lower Vref, try microstepping, or swap to TMC2209 |
 | 2026-09-25 | camera + projector | Camera flicker explained. The light repeats at 240 Hz (4 × 60 Hz) with a 1.25 ms dark gap, so short exposures that land in it come out black (predicted 26.8 %, measured 26.3 % at 1000 µs). Frame rates of 240/n phase-lock and can sit dark for seconds (3.3 s at 30 fps). [Camera side](camera/README.md#why-the-camera-sees-flicker-measured-2026-09-25), [waveform](projector/README.md#2026-09-25--why-the-camera-sees-flicker-240-hz-illumination-with-a-dark-gap--explained) | worked around: `camera\run.ps1` now uses full res, 400 µs, `--keep-frac 0.8`, 0.5 s max hold, for 23 updates/s and a longest hold of 98 ms ([settings](camera/README.md#recommended-settings-live-view-of-the-projector)). The full fix is to cut the light ~10× and use a 4167/8333/16667 µs exposure (not yet tested) |
 | 2026-09-25 | projector | No light at all. The GUI showed "Ready; Curtain" and all LEDs disabled, and Set wouldn't enable them. [Details](projector/README.md#2026-09-25--no-light-leds-off-and-wont-enable-gui-shows-ready-curtain--fixed) | fixed: a loose LED wire |
 | 2026-09-25 | xyz_stage | The Uno was running a different sketch ("Variable Speed Controller"), not the `xyz1` firmware the UI needs. [Details](xyz_stage/README.md#2026-09-25--set-up-xyz1-flashed) | done: old flash backed up, `xyz1` flashed; the stored position is stale, so zero before use |

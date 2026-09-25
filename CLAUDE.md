@@ -47,5 +47,9 @@
   a time, so if the browser UI is connected, ask the user to disconnect first.
 - Don't send motion commands to the stage without the user's go-ahead: no
   axis has soft limits yet, and the stored position is not trustworthy.
+- The stage's DRV8825 drivers are powered only during moves (the default, `D`);
+  `E` holds them powered at idle, which squeals. Keep that behaviour in any
+  firmware change. When the user allows a test move, keep it tiny (they chose
+  ±10 steps) and return to the start position.
 - Flash with the IDE's bundled arduino-cli (path in `xyz_stage/README.md`).
   Back up the existing flash with avrdude before overwriting a sketch.

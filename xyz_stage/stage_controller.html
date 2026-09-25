@@ -1012,8 +1012,8 @@
 
     <div class="motor-panel">
       <div class="motor-toggle" onclick="toggleMotors()">
-        <div class="toggle-track on" id="motorTrack"><div class="toggle-thumb"></div></div>
-        <span id="motorLabel">Motors enabled</span>
+        <div class="toggle-track" id="motorTrack"><div class="toggle-thumb"></div></div>
+        <span id="motorLabel">Motors released when idle (quiet)</span>
       </div>
     </div>
   </div>
@@ -1362,7 +1362,7 @@
 <script>
 // ── State ──────────────────────────────────────────────────
 let port = null, writer = null, reader = null;
-let connected = false, motorsOn = true;
+let connected = false, motorsOn = false;   // firmware releases drivers at idle by default
 let step = 100;
 let pos = { X: 0, Y: 0, Z: 0 };
 let limits = { Xmin:0, Xmax:0, Ymin:0, Ymax:0, Zmin:0, Zmax:0 };
@@ -1685,7 +1685,7 @@ function setSpeed(v) {
 function toggleMotors() {
   motorsOn = !motorsOn;
   document.getElementById('motorTrack').className = 'toggle-track' + (motorsOn ? ' on' : '');
-  document.getElementById('motorLabel').textContent = motorsOn ? 'Motors enabled' : 'Motors disabled';
+  document.getElementById('motorLabel').textContent = motorsOn ? 'Motors held when idle (squeals)' : 'Motors released when idle (quiet)';
   send(motorsOn ? 'E' : 'D');
 }
 

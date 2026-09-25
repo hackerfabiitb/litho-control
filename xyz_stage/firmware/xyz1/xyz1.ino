@@ -30,6 +30,14 @@ bool axisCalibrated[3] = {false, false, false};
 bool isCalibrated = false;
 int stepDelay = 800;
 
+// --- Driver power ---
+// The DRV8825s squeal (current chopping in the audible range) whenever they
+// are enabled, including at standstill. So by default they are enabled only
+// for the duration of a move. 'E' switches to holding torque at idle (for an
+// axis that back-drives when unpowered); 'D' returns to releasing at idle.
+bool holdWhenIdle = false;
+bool driversOn = false;
+
 // --- Pending calibration endpoints (transient, not saved to EEPROM) ---
 long endpointPos[3];
 long endpointNeg[3];
@@ -47,7 +55,7 @@ int cmdBufLen = 0;
 // ============================================================
 void setup() {
   pinMode(sys_en, OUTPUT);
-  digitalWrite(sys_en, LOW); // motors enabled (active LOW)
+  digitalWrite(sys_en, HIGH); // drivers off (active LOW) until a move needs them
   for (int i = 0; i < 3; i++) {
     pinMode(STEP_PINS[i], OUTPUT);
     pinMode(DIR_PINS[i], OUTPUT);
@@ -204,8 +212,11 @@ void processCommand(String line) {
       break;
     }
 
-    case 'E': digitalWrite(sys_en, LOW);  Serial.println("ENABLED");  break;
-    case 'D': digitalWrite(sys_en, HIGH); Serial.println("DISABLED"); break;
+    // E: hold torque when idle. D: release when idle (default). Moves always
+    // power the drivers, so D no longer lets steps be counted with the
+    // drivers off.
+    case 'E': holdWhenIdle = true;  driversEnable();  Serial.println("ENABLED");  break;
+    case 'D': holdWhenIdle = false; driversIdle();    Serial.println("DISABLED"); break;
     case 'P': sendPos();    break;
     case 'L': sendLimits(); break;
 
@@ -422,7 +433,9 @@ void handleFocus(String arg) {
     long eMin, eMax;
     effectiveLimits(2, eMin, eMax);
     long tz = constrain(focusZ, eMin, eMax);
+    driversEnable();
     stepAxisTo(2, tz);
+    driversIdle();
     savePosition();
     sendPos();
     Serial.println("DONE");
@@ -476,12 +489,28 @@ void moveAbsolute(long tx, long ty, long tz) {
     effectiveLimits(i, eMin, eMax);
     t[i] = constrain(t[i], eMin, eMax);
   }
+  driversEnable();
   stepAxisTo(0, t[0]);
   stepAxisTo(1, t[1]);
   stepAxisTo(2, t[2]);
+  driversIdle();
   savePosition();
   sendPos();
   Serial.println("DONE");
+}
+
+void driversEnable() {
+  if (driversOn) return;
+  digitalWrite(sys_en, LOW);
+  driversOn = true;
+  delay(2);  // let the outputs and coil current come up before the first step
+}
+
+void driversIdle() {
+  if (holdWhenIdle || !driversOn) return;
+  delay(20);  // let the rotor settle on the last step before releasing it
+  digitalWrite(sys_en, HIGH);
+  driversOn = false;
 }
 
 void stepAxisTo(int ax, long target) {
