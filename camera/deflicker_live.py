@@ -2,9 +2,15 @@
 
 Every grabbed frame is scored by mean intensity and kept only if it lands inside
 the band [--threshold-low, --threshold-high]: too dark is a black flicker frame,
-too bright is a blown-out one. Dropped frames leave the previous good frame on
-screen, so the display is steady instead of strobing. Without thresholds the
-first --calib frames are used to find the band (same split as capture_frames.py).
+too bright is a blown-out one. Dropped frames leave the previous frame on
+screen, so the display is steady instead of strobing — but never for longer
+than --max-hold (0.5 s): after that the next frame is shown whatever it looks
+like. Without thresholds the first --calib frames are used to find the band
+(same split as capture_frames.py).
+
+Why the frames flicker at all is measured in projector/flicker.py and written
+up in camera/README.md: the projector's light repeats at 240 Hz with a ~1.25 ms
+dark gap, so short exposures that land in it come out black.
 
     python camera/deflicker_live.py --exposure 5000
     python camera/deflicker_live.py --threshold-low 150 --threshold-high 240 --scale 0.5
@@ -44,6 +50,12 @@ def parse_args():
                    help="write the deflickered stream to this .avi file")
     p.add_argument("--record-fps", type=float, default=None,
                    help="frame rate stamped into the recording (default: measured)")
+    p.add_argument("--max-hold", type=float, default=0.5,
+                   help="longest time (s) to hold a frame on screen; after that "
+                        "the next frame is shown even if it would be dropped "
+                        "(default 0.5, 0 = hold indefinitely)")
+    p.add_argument("--duration", type=float, default=0,
+                   help="quit after this many seconds (default 0 = run until q)")
     add_threshold_args(p)
     add_camera_args(p)
     return p.parse_args()
@@ -126,11 +138,12 @@ def main():
     if calibrating:
         print(f"Calibrating on the first {args.calib} frames...")
 
-    last_good = None
+    last_shown = None                # what a dropped frame leaves on screen
+    last_update = time.perf_counter()
     deflicker_on = True
     unreliable = False               # auto split found only one population
     total = kept = 0
-    n_black = n_blown = 0
+    n_black = n_blown = n_forced = 0
     recent = deque(maxlen=120)       # (is_kept,) over the last ~3 s
     kept_times = deque(maxlen=60)
     writer = None
@@ -170,16 +183,25 @@ def main():
                         print("  WARNING: brightness is not clearly bimodal; set "
                               "--threshold-low manually if the result is wrong.")
                 # Show raw frames while calibrating so there is something on screen.
-                display, is_black, is_blown = frame, False, False
+                display, is_black, is_blown, forced = frame, False, False, False
+                last_shown, last_update = frame, time.perf_counter()
             else:
                 is_black = mean < low
                 is_blown = mean > high
                 n_black += is_black
                 n_blown += is_blown
-                if (is_black or is_blown) and deflicker_on:
-                    display = last_good
+                now = time.perf_counter()
+                # A camera frame rate that divides the projector's 240 Hz can
+                # phase-lock into its dark gap and drop frames for seconds;
+                # past --max-hold, show the frame anyway rather than freeze.
+                forced = ((is_black or is_blown) and deflicker_on
+                          and args.max_hold > 0
+                          and now - last_update > args.max_hold)
+                n_forced += forced
+                if (is_black or is_blown) and deflicker_on and not forced:
+                    display = last_shown
                 else:
-                    last_good = frame
+                    last_shown, last_update = frame, now
                     display = frame
 
             dropped = (is_black or is_blown) and deflicker_on
@@ -201,6 +223,12 @@ def main():
             recent.append(0 if (dropped and not calibrating) else 1)
 
             if display is None:      # still waiting for the first lit frame
+                # Still honour q / --duration: with --max-hold 0 and a dark
+                # projector this could otherwise spin here forever.
+                if (cv2.waitKey(1) & 0xFF) in (ord("q"), 27) or (
+                        args.duration
+                        and time.perf_counter() - t_start > args.duration):
+                    break
                 continue
 
             if not window_sized:
@@ -224,14 +252,15 @@ def main():
                 out_rate = (len(kept_times) - 1) / span if span > 0 else 0.0
             drop_pct = 100.0 * (1 - np.mean(recent)) if recent else 0.0
             hi_text = "inf" if high in (None, float("inf")) else f"{high:.1f}"
+            kind = "BLACK" if is_black else "BLOWN"
             state = ("   [CALIBRATING]" if calibrating else
-                     "   DROPPED: BLACK" if is_black and deflicker_on else
-                     "   DROPPED: BLOWN" if is_blown and deflicker_on else "")
+                     f"   FORCED: {kind} (held {args.max_hold:g} s)" if forced else
+                     f"   DROPPED: {kind}" if dropped else "")
             status = [
                 f"mean {mean:7.2f}   keep {low if low else 0:.1f} .. {hi_text}"
                 + state,
                 f"kept {kept}/{total}   dropping {drop_pct:4.1f}% (recent)   "
-                f"black {n_black}  blown {n_blown}",
+                f"black {n_black}  blown {n_blown}  forced {n_forced}",
                 f"in {in_rate:5.1f} fps -> out {out_rate:5.1f} fps"
                 + ("   DEFLICKER OFF" if not deflicker_on else ""),
             ]
@@ -242,7 +271,8 @@ def main():
             cv2.imshow(window, overlay(shown, status))
 
             key = cv2.waitKey(1) & 0xFF
-            if key in (ord("q"), 27):
+            if key in (ord("q"), 27) or (
+                    args.duration and time.perf_counter() - t_start > args.duration):
                 break
             elif key == ord("r"):
                 calibrating = True
@@ -282,7 +312,8 @@ def main():
     if total:
         print(f"\n{kept}/{total} frames kept "
               f"({100.0 * (total - kept) / total:.1f}% dropped: "
-              f"{n_black} black, {n_blown} blown out)")
+              f"{n_black} black, {n_blown} blown out; {n_forced} of those "
+              f"shown anyway after {args.max_hold:g} s)")
     return 0
 
 

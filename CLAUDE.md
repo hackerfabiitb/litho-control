@@ -34,7 +34,14 @@
 - The projector is `\\.\DISPLAY5`, 3840×2160 at 150 % scaling. Patterns need
   a per-monitor-DPI-aware process, which `projector/display.py` sets up.
 - The projector must be powered on to appear on USB (`VID_0451&PID_7540`).
-- Camera settings (binning, AOI) persist in the camera between runs.
+- Camera settings (binning, AOI, frame-rate cap) persist in the camera between
+  runs. `open_camera` clears the frame-rate cap when no fps is given; any
+  script that sets a cap should clear it on exit, as `flicker.py sweep` does.
+- The projector's light repeats at 240 Hz (4 × 60 Hz) with a 1.25 ms dark gap
+  per 4.167 ms. Camera frame rates of 240/n phase-lock to it, and short
+  exposures sample it. See camera/README "Why the camera sees flicker" before
+  changing exposure or fps. With the current LED level, anything over about
+  1 ms exposure saturates.
 - The stage Arduino is a genuine Uno on COM4. COM3 is an unrelated CH343
   adapter. Opening the port resets the Uno. Only one program can hold COM4 at
   a time, so if the browser UI is connected, ask the user to disconnect first.

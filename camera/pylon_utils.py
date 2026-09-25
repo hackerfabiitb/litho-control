@@ -186,10 +186,16 @@ def open_camera(serial=None, exposure_us=None, gain=None, fps=None,
         _try_set(cam, ["GainAuto"], "Off")
         if _try_set(cam, ["Gain"], float(gain), label="gain") is None:
             _try_set(cam, ["GainRaw"], int(gain), label="gain")
-    if fps is not None:
+    if fps:
         _try_set(cam, ["AcquisitionFrameRateEnable"], True)
         _try_set(cam, ["AcquisitionFrameRate", "AcquisitionFrameRateAbs"],
                  float(fps), label="fps")
+    else:
+        # The camera remembers a frame-rate cap from earlier runs (pylon
+        # Viewer, projector/flicker.py sweeps). Clear it so "no --fps" really
+        # means as fast as possible — a leftover 10/20/30 fps cap phase-locks
+        # to the projector's 240 Hz and can sit in its dark gap for seconds.
+        _try_set(cam, ["AcquisitionFrameRateEnable"], False)
 
     if verbose:
         exp = _try_get(cam, ["ExposureTime", "ExposureTimeAbs"])
@@ -223,7 +229,10 @@ def add_camera_args(parser):
     g.add_argument("--exposure", type=float, default=None,
                    help="exposure time in microseconds (also disables auto exposure)")
     g.add_argument("--gain", type=float, default=None, help="gain in dB")
-    g.add_argument("--fps", type=float, default=None, help="cap the frame rate")
+    g.add_argument("--fps", type=float, default=None,
+                   help="cap the frame rate (default: uncapped). Avoid 240/n "
+                        "(40, 30, 24, 20, 15...): those phase-lock to the "
+                        "projector and can sit in its dark gap for seconds")
     g.add_argument("--pixel-format", default="Mono8",
                    help="pixel format (default Mono8)")
     g.add_argument("--width", type=int, default=None,

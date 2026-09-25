@@ -17,6 +17,60 @@ Only one process can hold a USB3 Basler camera at a time — **close pylon Viewe
 before running these scripts**, or you get
 `Device is exclusively opened by another client`.
 
+## Why the camera sees flicker (measured 2026-09-25)
+
+The projector doesn't give off steady light, and the camera's short exposure
+samples it. `projector/flicker.py waveform` measured the light over time: a
+16-row AOI at 920 fps with a 34 µs exposure, timed by the camera's hardware
+timestamps.
+
+- **The light repeats at 240.00 Hz**, which is 4 × the 60 Hz HDMI input, and
+  locked to it. Each input frame has four identical 4.167 ms sub-frames.
+- **Each sub-frame starts with a 1.25 ms dark gap** (about 30 % of the time).
+  After that come a few shorter dips and one brief bright spike. Plot:
+  [`projector/docs/2026-09-25_illumination_waveform.png`](../projector/docs/2026-09-25_illumination_waveform.png).
+- **What decides a frame's brightness** is where its exposure starts within
+  the 4.167 ms cycle. A 1000 µs exposure that starts in the gap comes out
+  black. The waveform predicts 26.8 % black frames at 1000 µs, and
+  `capture_frames.py` measured 26.3 %.
+
+**The frame rate matters as a stroboscopic effect** (`flicker.py sweep`, 1000 µs,
+8 s per rate):
+
+| camera fps | relation to 240 Hz | dark frames | longest dark run | longest freeze |
+| --- | --- | --- | --- | --- |
+| 41.05 (max), 37, 27, 17 | not a divisor: the phase moves every frame | ~10 % | 1 frame | 49–118 ms |
+| 40, 24, 15 | 240/n: phase-locked, in a lit phase this time | 0 % | 0 | — |
+| **30, 20, 10** | 240/n: phase-locked **in the dark gap** | 30–40 % | 32–97 frames | **up to 3.3 s** |
+
+At 240/n frame rates the camera catches the same point in the cycle every
+frame. Which point it gets is luck, and it only changes slowly as the two
+clocks drift, so a run can go dark for seconds. **Avoid 40, 30, 24, 20, 15,
+12 and 10 fps.** Uncapped (41.05 fps full-frame) is fine.
+
+**The keep band can't fix it.** With the desktop projected at 1000 µs, frame
+brightness is a continuous spread, not two clusters:
+- 26 % of frames are black (the exposure fell in the gap).
+- 59 % "blown": these saw the full light, but the projector is so bright that
+  they clip.
+- The 15 % left in the keep band are the frames that only partly overlapped
+  the gap, which are the least consistent ones.
+
+**The real fix is an exposure of whole periods**: 4167, 8333 or 16667 µs. Then
+every frame integrates the same light whatever its phase. The waveform
+predicts flicker falling to 0 % at those exposures, from 51 % at 1000 µs. It
+also makes the frame rate irrelevant, and nothing needs dropping.
+
+That hasn't been tested yet, because the light is too strong. Even a black
+image (stray light plus the stuck-on DMD bands) reaches about 28 counts per
+100 µs, so everything saturates well before 4 ms. **Reduce the light about
+10×** (lower LED current in the DLP GUI, stop down the lens, or add an ND
+filter), then check with:
+
+```powershell
+.\.venv\Scripts\python.exe projector\flicker.py sweep --exposure 1000 4167 8333 16667
+```
+
 ## 1. Measure the flicker
 
 ```powershell
@@ -123,9 +177,24 @@ exposure is long enough to average over the flicker, so shorten it.
 .\camera\run.ps1
 ```
 
-Scores each frame, drops the ones below threshold, and holds the last good frame
-on screen so the view is steady instead of strobing. Without `--threshold` it
-calibrates on the first 60 frames (`--calib`).
+Scores each frame, drops the ones outside the keep band, and holds the last
+frame on screen so the view is steady instead of strobing. Without
+`--threshold` it calibrates on the first 60 frames (`--calib`).
+
+**Max hold.** A frame is never held for more than `--max-hold` seconds
+(default 0.5). After that, the next frame is shown even if it's dark or blown
+out, and it's labelled `FORCED: BLACK` / `FORCED: BLOWN`. The view keeps
+updating at least twice a second even when the thresholds drop almost
+everything. `--max-hold 0` restores the old behaviour of holding
+indefinitely. Forced frames are counted separately and aren't written to
+`--record`.
+
+`--duration 10` quits after 10 s, for unattended tests.
+
+The frame rate is uncapped unless `--fps` is given. The camera remembers a cap
+from earlier runs (pylon Viewer, `flicker.py`), so the script clears it on
+open. Don't pass `--fps` values of 240/n; see
+[Why the camera sees flicker](#why-the-camera-sees-flicker-measured-2026-09-25).
 
 | key | action |
 | --- | --- |
@@ -137,7 +206,8 @@ calibrates on the first 60 frames (`--calib`).
 | `s` | save a snapshot PNG |
 
 The overlay shows the current mean against the keep band, kept/total, recent drop
-percentage, separate black and blown counts, and input vs output frame rate. A
+percentage, separate black, blown and forced counts, and input vs output frame
+rate. A
 dropped frame is labelled `DROPPED: BLACK` or `DROPPED: BLOWN`, and if the auto
 split found only one brightness population the overlay says so rather than
 silently throwing away half the good frames.

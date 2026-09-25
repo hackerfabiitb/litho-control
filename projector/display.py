@@ -76,6 +76,34 @@ def find_projector(name=None):
     return others[0]
 
 
+class _DEVMODEW(ctypes.Structure):
+    _fields_ = [("dmDeviceName", wintypes.WCHAR * 32), ("dmSpecVersion", wintypes.WORD),
+                ("dmDriverVersion", wintypes.WORD), ("dmSize", wintypes.WORD),
+                ("dmDriverExtra", wintypes.WORD), ("dmFields", wintypes.DWORD),
+                ("dmPositionX", wintypes.LONG), ("dmPositionY", wintypes.LONG),
+                ("dmDisplayOrientation", wintypes.DWORD),
+                ("dmDisplayFixedOutput", wintypes.DWORD),
+                ("dmColor", ctypes.c_short), ("dmDuplex", ctypes.c_short),
+                ("dmYResolution", ctypes.c_short), ("dmTTOption", ctypes.c_short),
+                ("dmCollate", ctypes.c_short), ("dmFormName", wintypes.WCHAR * 32),
+                ("dmLogPixels", wintypes.WORD), ("dmBitsPerPel", wintypes.DWORD),
+                ("dmPelsWidth", wintypes.DWORD), ("dmPelsHeight", wintypes.DWORD),
+                ("dmDisplayFlags", wintypes.DWORD), ("dmDisplayFrequency", wintypes.DWORD)]
+
+
+def refresh_rate(monitor):
+    """The refresh rate Windows is sending to `monitor`, in Hz (an integer:
+    Windows reports 59.94 Hz modes as 59). The projector runs at 60."""
+    mode = _DEVMODEW()
+    mode.dmSize = ctypes.sizeof(mode)
+    ENUM_CURRENT_SETTINGS = -1
+    if not ctypes.windll.user32.EnumDisplaySettingsW(monitor.name,
+                                                     ENUM_CURRENT_SETTINGS,
+                                                     ctypes.byref(mode)):
+        raise RuntimeError(f"could not read display mode of {monitor.name}")
+    return int(mode.dmDisplayFrequency)
+
+
 # --------------------------------------------------------------------------- #
 # patterns — all in input pixels (3840x2160). The DMD has 1920x1080 mirrors and
 # uses XPR shifting to show 4K, so 2 input px ~ 1 mirror in each axis.

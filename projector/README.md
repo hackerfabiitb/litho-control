@@ -33,6 +33,7 @@ client at a time.
 | `dmd_calibrate.py` | maps camera px to projector input px and stores a white reference in `captures/calib.npz` |
 | `dmd_blocks.py` | alternates black / horizontal stripes, scores every column and lists the faulty column ranges |
 | `dmd_probe.py` | shows any list of patterns and saves what the camera sees, plus a contact sheet |
+| `flicker.py` | `waveform`: the illumination over time (camera at 920 fps, 34 µs) and the flicker it predicts for any exposure; `sweep`: measured flicker against camera fps and exposure |
 | `hdmi.ps1` | logs monitor plug/unplug events to `C:\hdmi-log.csv` (watches for HDMI dropouts) |
 
 Outputs go to `projector/captures/<timestamp>_<tag>/`, which is git-ignored.
@@ -80,7 +81,44 @@ columns / rows), `checkerN`, `hramp`, `vramp`, `marker`.
 
 ## Debugging log
 
-### 2026-09-25 — no light; LEDs off and won't enable; GUI shows "Ready; Curtain" — OPEN
+### 2026-09-25 — why the camera sees flicker: 240 Hz illumination with a dark gap — EXPLAINED
+
+**Method.** `flicker.py waveform` shrinks the camera to a 1024×16 AOI, which
+runs at 920 fps with a 34 µs exposure, and records white for 6.5 s. It then
+folds the samples by their hardware timestamps at multiples of the 60 Hz
+refresh rate.
+
+**Result.** The fold at **239.9988 Hz** explains 96.3 % of the brightness
+variance, so the light repeats four times per 59.9998 Hz input frame. Folding
+at 180 or 360 Hz only reaches 68 %. An unconstrained search was fooled by
+aliasing: the camera samples at an exactly even rate, and on 0.5 s of data
+320 Hz folded almost as well (90.8 %) as 240 Hz (91.3 %). So the script
+searches only multiples of the refresh rate.
+
+Each 4.167 ms period starts with a **1.25 ms dark gap**. The light is above 10 %
+of peak for only 66 % of the time, with a few shorter dips and one bright
+spike about 2.5 ms in. What causes the gap hasn't been identified. Possible
+causes are XPR actuator settling, or a colour segment whose LED is off;
+comparing with one LED at a time in the GUI would tell.
+
+![illumination waveform](docs/2026-09-25_illumination_waveform.png)
+
+The effect on the camera, the frame-rate sweep, and the fix (whole-period
+exposure) are written up in
+[camera/README.md](../camera/README.md#why-the-camera-sees-flicker-measured-2026-09-25).
+
+**Side findings.**
+- Grays up to at least 32/255 are displayed as black: black, gray4 and gray32
+  all read about 28 at 100 µs.
+- Black's level (stray light plus the stuck-on bands) is high enough that
+  every exposure over about 1 ms saturates the camera. The light needs to come
+  down about 10× before whole-period exposures can be used.
+
+### 2026-09-25 — no light; LEDs off and won't enable; GUI shows "Ready; Curtain" — FIXED
+
+**Resolution.** A loose LED wire. Once it was reconnected, the light came back,
+and the waveform measurement above was made after the fix. The controller
+had been refusing LED enables because it couldn't drive the LEDs.
 
 **Symptom.** Light was visible earlier in the day; by about 20:24 there was
 none, by eye or on camera. Neither "Switch to External Video" nor the
