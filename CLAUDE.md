@@ -51,7 +51,11 @@
   1 ms exposure saturates.
 - The stage Arduino is a genuine Uno on COM4. COM3 is an unrelated CH343
   adapter. Opening the port resets the Uno. Only one program can hold COM4 at
-  a time, so if the browser UI is connected, ask the user to disconnect first.
+  a time, and `ui/server.py` holds it while running. To use the stage from a
+  script, go through the server (`POST /stage/send`) instead of opening COM4.
+  To flash, `POST /stage/disconnect` first and `/stage/connect` after. Never
+  send the Uno anything in the ~1.5 s after opening the port: the bootloader
+  reads it as commands. Wait for `READY`.
 - Don't send motion commands to the stage without the user's go-ahead: no
   axis has soft limits yet, and the stored position is not trustworthy.
 - The stage's DRV8825 drivers are powered only during moves (the default, `D`);

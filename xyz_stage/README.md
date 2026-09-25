@@ -49,10 +49,10 @@ position query). Nothing moves. From Python, use
 .\ui\start.ps1
 ```
 
-Then click **Connect** and choose **COM4**. Web Serial only lets a person
-pick the port, so no script can connect for you. Only one program can hold
-COM4 at a time: disconnect in the UI before running `find_arduino.py
---probe` or flashing.
+The server finds the Uno and connects to it by itself; there's no port to
+pick. Only one program can hold COM4 at a time. Before running
+`find_arduino.py --probe` or flashing, click **Disconnect** in the UI, or
+`POST /stage/disconnect`. **Connect** takes it back.
 
 - **Projector and camera panes:** see [ui/README.md](../ui/README.md).
 - **Keys:** arrow keys jog X/Y, PgUp/PgDn jog Z. See `litho-ui_README.md`
@@ -78,9 +78,15 @@ readout drifted away from the real position.
 
 Watch for an axis that moves by itself when unpowered, for example Z sinking
 under gravity or a stage being bumped. The firmware can't see that movement,
-so the position readout would go wrong. Use `E` (the UI toggle) for that case.
+so the position readout would go wrong. For that case use `E`: the **Hold**
+button under "Motors between moves" in the UI's left column. **Release** is
+`D`.
 
 ## Flash the firmware
+
+If `ui/server.py` is running, release the port first: click **Disconnect**
+in the UI, or run `curl -X POST localhost:8765/stage/disconnect`. Afterwards,
+reconnect.
 
 The Arduino IDE 2.3.10 is installed per user via winget
 (`ArduinoSA.IDE.stable`), with the `arduino:avr` 1.8.8 core. Its bundled

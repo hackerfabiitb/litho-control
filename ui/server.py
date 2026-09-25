@@ -1,13 +1,22 @@
-"""Control UI server: stage UI, projector display and deflickered camera.
+"""Control UI server: stage, projector display and deflickered camera.
 
     python ui/server.py                 # then open http://localhost:8765
     .\\ui\\start.ps1                     # starts it and opens the browser
 
-One process owns the camera and the projector window, and serves the UI page
-(ui/index.html) over http://localhost, where Chrome/Edge still allow Web
-Serial for the stage Arduino.
+One process owns the stage's serial port, the camera and the projector
+window, and serves the UI page (ui/index.html). The stage connects by itself:
+the server finds the Uno (xyz_stage/find_arduino.py) at startup, and again
+every 3 s if it is unplugged, so the page never has to pick a port.
 
 GET  /                       the UI
+GET  /stage/events           server-sent events: `line` (each line from the
+                             firmware), `replay` (cached state lines sent to a
+                             new page: POS, LIMITS, CAL..., FOCUS) and
+                             `status` (JSON: connected, port, idle_mode, error)
+GET  /stage/status           that status JSON
+POST /stage/send             {"line": "J X 10"} — one firmware command
+POST /stage/connect          (re)connect automatically — the default
+POST /stage/disconnect       release the COM port, e.g. to flash firmware
 GET  /stream                 deflickered camera feed, MJPEG (full resolution)
 GET  /config                 camera settings and live stats, JSON
 POST /config                 {"exposure_us", "keep_frac", "max_hold"} (any subset)
@@ -45,9 +54,11 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "camera"))
 sys.path.insert(0, os.path.join(ROOT, "projector"))
+sys.path.insert(0, os.path.join(ROOT, "xyz_stage"))
 
 from deflicker import KeepFilter  # noqa: E402
 from display import PatternWindow, find_projector  # noqa: E402  (sets DPI awareness)
+from find_arduino import BAUD, find_arduino  # noqa: E402
 from pylon_utils import _try_set, frame_score, grab_frames, open_camera  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -78,6 +89,149 @@ class Latest:
 def encode(img, quality=85):
     ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
     return buf.tobytes() if ok else None
+
+
+# --------------------------------------------------------------------------- #
+# stage
+# --------------------------------------------------------------------------- #
+
+class Stage(threading.Thread):
+    """Owns the Uno's serial port and fans its output out to every page.
+
+    Opening the port resets the Uno, which then sits in its bootloader for
+    ~1.5 s — bytes sent then are read as bootloader commands ('P' is one).
+    So the server sends nothing until the firmware's READY, then only a 'P'
+    to replace the boot banner's often-garbled POS line. A newly opened page
+    gets the state from cached lines instead of by querying the firmware.
+    """
+
+    RETRY_S = 3.0
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.ser = None
+        self.port = None
+        self.error = None
+        self.want = True                     # stay connected / keep retrying
+        self.idle_mode = "release"           # xyz1 boots releasing at idle
+        self.cond = threading.Condition()
+        self.events = deque(maxlen=1000)     # (seq, kind, data)
+        self.seq = 0
+        self.cache = {}                      # state lines replayed to new pages
+        self.write_lock = threading.Lock()
+
+    def status(self):
+        return {"connected": self.ser is not None, "port": self.port,
+                "idle_mode": self.idle_mode, "error": self.error}
+
+    def emit(self, kind, data):
+        with self.cond:
+            self.seq += 1
+            self.events.append((self.seq, kind, data))
+            self.cond.notify_all()
+
+    def replay(self):
+        with self.cond:
+            return list(self.cache.values())
+
+    def send(self, line):
+        with self.write_lock:
+            if self.ser is None:
+                raise RuntimeError("stage not connected")
+            self.ser.write((line.strip() + "\n").encode())
+
+    def connect(self):
+        self.want = True
+
+    def disconnect(self):
+        self.want = False
+        deadline = time.time() + 2
+        while self.ser is not None and time.time() < deadline:
+            time.sleep(0.05)
+
+    def _remember(self, line):
+        """Keep the latest line of each kind that describes state."""
+        words = line.split()
+        if line.startswith("CAL ") and len(words) >= 3 and words[2] == "DONE":
+            key = "CAL " + words[1]          # per-axis calibration
+        elif line == "CAL CLEARED":
+            for axis in "XYZ":
+                self.cache.pop("CAL " + axis, None)
+            return
+        elif line.startswith("CAL CLEAR ") and len(words) == 3:
+            self.cache.pop("CAL " + words[2], None)
+            return
+        elif line.startswith("CAL INFO"):
+            key = "CAL INFO"
+        elif line in ("CALIBRATED", "UNCALIBRATED"):
+            key = "CALSTATE"
+        elif words and words[0] in ("POS", "LIMITS", "FOCUS"):
+            key = words[0]
+        else:
+            return
+        with self.cond:
+            self.cache.pop(key, None)        # re-insert: replay in recency order
+            self.cache[key] = line
+
+    def run(self):
+        import serial
+        while True:
+            if not self.want:
+                time.sleep(0.2)
+                continue
+            try:
+                port = find_arduino()
+                ser = serial.Serial(port, BAUD, timeout=0.2)
+            except Exception as exc:         # no Uno, or COM4 held elsewhere
+                self.error = str(exc).splitlines()[0][:200]
+                self.emit("status", json.dumps(self.status()))
+                time.sleep(self.RETRY_S)
+                continue
+            with self.cond:
+                self.cache.clear()           # the Uno just reset
+            self.ser, self.port, self.error = ser, port, None
+            self.idle_mode = "release"
+            self.emit("status", json.dumps(self.status()))
+            print(f"[stage] connected on {port}")
+            buf = b""
+            try:
+                while self.want:
+                    chunk = ser.read(256)
+                    if not chunk:
+                        continue
+                    buf += chunk
+                    *lines, buf = buf.split(b"\n")
+                    for raw in lines:
+                        line = raw.decode(errors="replace").strip()
+                        if not line:
+                            continue
+                        mode = {"ENABLED": "hold", "DISABLED": "release",
+                                "READY": "release"}.get(line)
+                        self._remember(line)
+                        self.emit("line", line)
+                        if line == "READY":
+                            # The first line after a reset often arrives with
+                            # bytes missing (seen: "POS -704 648 9038" for
+                            # "POS -17084 6848 9046"). READY means the firmware
+                            # is running, past the bootloader, so it is now safe
+                            # to ask for the position again.
+                            self.send("P")
+                        if mode and mode != self.idle_mode:
+                            self.idle_mode = mode
+                            self.emit("status", json.dumps(self.status()))
+            except (serial.SerialException, OSError) as exc:
+                self.error = str(exc).splitlines()[0][:200]
+                print(f"[stage] {self.error}", file=sys.stderr)
+            finally:
+                with self.write_lock:
+                    try:
+                        ser.close()
+                    except Exception:
+                        pass
+                    self.ser = None
+                self.emit("status", json.dumps(self.status()))
+            if self.want:
+                time.sleep(self.RETRY_S)
 
 
 # --------------------------------------------------------------------------- #
@@ -286,7 +440,7 @@ class Mirror(threading.Thread):
 # HTTP
 # --------------------------------------------------------------------------- #
 
-def make_handler(camera, projector, mirror):
+def make_handler(stage, camera, projector, mirror):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
             pass
@@ -329,8 +483,43 @@ def make_handler(camera, projector, mirror):
                 with latest.cond:
                     latest.clients -= 1
 
+        def _events(self):
+            """Server-sent events from the stage: status first, then the
+            cached state lines as `replay`, then everything live."""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+
+            def event(kind, data):
+                self.wfile.write(f"event: {kind}\ndata: {data}\n\n".encode())
+
+            try:
+                with stage.cond:
+                    last = stage.seq
+                event("status", json.dumps(stage.status()))
+                for line in stage.replay():
+                    event("replay", line)
+                self.wfile.flush()
+                while True:
+                    with stage.cond:
+                        stage.cond.wait_for(lambda: stage.seq != last, timeout=15)
+                        new = [e for e in stage.events if e[0] > last]
+                    if not new:
+                        self.wfile.write(b": keepalive\n\n")
+                    for seq, kind, data in new:
+                        event(kind, data)
+                        last = seq
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                pass
+
         def do_GET(self):
             path = urlparse(self.path).path
+            if path == "/stage/events":
+                return self._events()
+            if path == "/stage/status":
+                return self._json(stage.status())
             if path in ("/", "/index.html"):
                 with open(os.path.join(HERE, "index.html"), "rb") as fh:
                     self._send(200, fh.read(), "text/html; charset=utf-8")
@@ -353,7 +542,22 @@ def make_handler(camera, projector, mirror):
             url = urlparse(self.path)
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
             try:
-                if url.path == "/config":
+                if url.path == "/stage/send":
+                    line = str(json.loads(self._body() or b"{}").get("line", "")).strip()
+                    if not line or "\n" in line or "\r" in line:
+                        return self._json({"error": "need one command line"}, 400)
+                    try:
+                        stage.send(line)
+                    except (RuntimeError, OSError) as exc:
+                        return self._json({"error": str(exc)}, 409)
+                    self._json({"ok": True})
+                elif url.path == "/stage/connect":
+                    stage.connect()
+                    self._json(stage.status())
+                elif url.path == "/stage/disconnect":
+                    stage.disconnect()
+                    self._json(stage.status())
+                elif url.path == "/config":
                     data = json.loads(self._body() or b"{}")
                     camera.configure(exposure_us=data.get("exposure_us"),
                                      keep_frac=data.get("keep_frac"),
@@ -401,14 +605,15 @@ def main():
     args = p.parse_args()
 
     monitor = find_projector(args.monitor)
+    stage = Stage()
     camera = Camera(args.exposure, args.keep_frac, args.max_hold)
     projector = Projector(monitor)
     mirror = Mirror(monitor)
-    for t in (camera, projector, mirror):
+    for t in (stage, camera, projector, mirror):
         t.start()
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port),
-                                 make_handler(camera, projector, mirror))
+                                 make_handler(stage, camera, projector, mirror))
     server.daemon_threads = True
     print(f"UI on http://localhost:{args.port}   projector {monitor.name} "
           f"{monitor.width}x{monitor.height}   Ctrl+C to stop")
@@ -418,6 +623,7 @@ def main():
         pass
     finally:
         camera.stop_flag.set()
+        stage.disconnect()
         projector.do("close", timeout=2.0)
         server.server_close()
 

@@ -268,7 +268,8 @@
   }
   .pos-row {
     display: grid;
-    grid-template-columns: 18px 1fr 24px;
+    /* value column sized to its content: a fixed 24px cut "-17004" to "-170" */
+    grid-template-columns: 18px 1fr auto;
     align-items: center;
     gap: 8px;
   }
@@ -352,6 +353,14 @@
     cursor: pointer;
   }
   .speed-val { font-size: 10px; color: var(--text); min-width: 50px; text-align: right; }
+
+  /* ── Idle mode (Release / Hold) ── */
+  .idle-panel { padding: 12px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
+  .idle-seg { display: flex; gap: 6px; margin: 6px 0; }
+  .idle-seg .hz-btn { flex: 1; display: flex; flex-direction: column; align-items: center;
+                      gap: 2px; padding: 6px 4px; font-size: 11px; }
+  .idle-seg .hz-btn small { font-size: 9px; color: var(--dim); }
+  .idle-seg .hz-btn.active { border-color: var(--accent); color: var(--accent); }
 
   /* ── Motor toggle ── */
   .motor-panel {
@@ -1016,6 +1025,17 @@
       </div>
     </div>
 
+    <div class="idle-panel">
+      <div class="step-label">Motors between moves</div>
+      <div class="idle-seg">
+        <button class="hz-btn active" id="idleRelease" onclick="setIdleMode('release')">Release<small>quiet · D</small></button>
+        <button class="hz-btn" id="idleHold" onclick="setIdleMode('hold')">Hold<small>squeals · E</small></button>
+      </div>
+      <div class="state-info">Every move is powered and counted in both modes.
+        Release: no holding torque at rest. Use Hold if an axis drifts
+        (e.g. Z sinks) while released.</div>
+    </div>
+
     <div class="state-panel">
       <div class="step-label">Saved State</div>
       <div style="display:flex;gap:6px;">
@@ -1025,12 +1045,6 @@
       <div class="state-info" id="stateInfo">Auto-saved locally</div>
     </div>
 
-    <div class="motor-panel">
-      <div class="motor-toggle" onclick="toggleMotors()">
-        <div class="toggle-track" id="motorTrack"><div class="toggle-thumb"></div></div>
-        <span id="motorLabel">Motors released when idle (quiet)</span>
-      </div>
-    </div>
   </div>
 
   <!-- CENTER PANEL -->
@@ -1396,8 +1410,8 @@
 
 <script>
 // ── State ──────────────────────────────────────────────────
-let port = null, writer = null, reader = null;
-let connected = false, motorsOn = false;   // firmware releases drivers at idle by default
+let connected = false;
+let idleMode = 'release';   // 'release' (D, default) or 'hold' (E) — mirrored from the server
 let step = 100;
 let pos = { X: 0, Y: 0, Z: 0 };
 let limits = { Xmin:0, Xmax:0, Ymin:0, Ymax:0, Zmin:0, Zmax:0 };
@@ -1419,33 +1433,52 @@ let calEndpoints = {
 };
 
 // ── Connection ─────────────────────────────────────────────
+// ui/server.py owns the Uno's COM port: it finds the board by itself at
+// startup and reconnects if it is unplugged. The page just listens to the
+// server's event stream and posts commands. Connect/Disconnect here tell the
+// server to take or release the port (e.g. to flash firmware).
+let stageEvents = null;
+
 async function toggleConnect() {
-  if (connected) { await disconnect(); return; }
-  if (!navigator.serial) {
-    log('Web Serial API not supported. Use Chrome or Edge.', 'err');
-    return;
-  }
+  const path = connected ? '/stage/disconnect' : '/stage/connect';
   try {
-    port = await navigator.serial.requestPort();
-    await port.open({ baudRate: 115200 });
-    writer = port.writable.getWriter();
-    connected = true;
-    setStatus('connected', true);
-    log('Port opened @ 115200', 'sys');
-    startReading();
-  } catch(e) {
-    log('Connect failed: ' + e.message, 'err');
+    const r = await fetch(path, { method: 'POST', signal: AbortSignal.timeout(5000) });
+    applyStageStatus(await r.json());
+    log(connected ? 'Releasing COM port…' : 'Searching for the Uno…', 'sys');
+  } catch (e) {
+    log('Server unreachable — is ui/server.py running?', 'err');
   }
 }
 
-async function disconnect() {
-  connected = false;                       // stop auto-restart loop first
-  try { await reader?.cancel(); } catch(_) {}
-  try { writer?.releaseLock(); } catch(_) {}
-  try { await port?.close(); } catch(_) {}
-  port = writer = reader = null;
-  setStatus('disconnected', false);
-  log('Disconnected.', 'sys');
+function applyStageStatus(s) {
+  const was = connected;
+  connected = s.connected;
+  if (s.connected)  setStatus('connected · ' + s.port, true);
+  else if (s.error) setStatus('searching for Uno…', false);
+  else              setStatus('disconnected', false);
+  idleMode = s.idle_mode;
+  renderIdleMode();
+  if (s.connected && !was) log('Stage connected on ' + s.port, 'sys');
+  if (!s.connected && was) log('Stage disconnected' + (s.error ? ': ' + s.error : ''), 'err');
+}
+
+function startStageEvents() {
+  stageEvents = new EventSource('/stage/events');
+  stageEvents.addEventListener('status', e => applyStageStatus(JSON.parse(e.data)));
+  // Cached state from before this page was opened: parse, don't log.
+  stageEvents.addEventListener('replay', e => parseLine(e.data));
+  stageEvents.addEventListener('line', e => {
+    const t = e.data;
+    const isCal = t.startsWith('CAL ') || t === 'CALIBRATED' || t === 'UNCALIBRATED';
+    log(t, isCal ? 'cal' : 'rx');
+    parseLine(t);
+  });
+  stageEvents.onerror = () => {
+    // EventSource reconnects by itself; show the gap meanwhile.
+    if (connected) log('Lost the server — reconnecting…', 'err');
+    connected = false;
+    setStatus('server unreachable', false);
+  };
 }
 
 function setStatus(label, on) {
@@ -1457,41 +1490,7 @@ function setStatus(label, on) {
   document.getElementById('undoBtn').disabled = !on;
 }
 
-// ── Serial Read ─────────────────────────────────────────────
-async function startReading() {
-  const dec = new TextDecoder();
-  let buf = '';
-  // Outer loop: auto-restart on error while still connected
-  while (connected) {
-    try {
-      reader = port.readable.getReader();
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buf += dec.decode(value, { stream: true });
-          const lines = buf.split('\n');
-          buf = lines.pop();
-          for (const line of lines) {
-            const t = line.trim();
-            if (!t) continue;
-            const isCal = t.startsWith('CAL ') || t === 'CALIBRATED' || t === 'UNCALIBRATED';
-            log(t, isCal ? 'cal' : 'rx');
-            parseLine(t);
-          }
-        }
-      } finally {
-        try { reader.releaseLock(); } catch(_) {}
-        reader = null;
-      }
-    } catch(e) {
-      if (!connected) break;
-      log('Serial read error: ' + e.message + ' — retrying…', 'err');
-      await new Promise(r => setTimeout(r, 1000));
-    }
-  }
-}
-
+// ── Firmware lines ─────────────────────────────────────────
 function parseLine(line) {
   // DONE — motion complete
   if (line === 'DONE') {
@@ -1639,10 +1638,17 @@ function parseLine(line) {
 
 // ── Send ───────────────────────────────────────────────────
 async function send(cmd) {
-  if (!writer) { log('Not connected', 'err'); return; }
-  const enc = new TextEncoder();
-  await writer.write(enc.encode(cmd + '\n'));
-  log(cmd, 'tx');
+  if (!connected) { log('Stage not connected', 'err'); return; }
+  try {
+    const r = await fetch('/stage/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ line: cmd }), signal: AbortSignal.timeout(5000),
+    });
+    if (!r.ok) { log('Send failed: ' + ((await r.json()).error || r.status), 'err'); return; }
+    log(cmd, 'tx');
+  } catch (e) {
+    log('Send failed: server unreachable', 'err');
+  }
 }
 
 // ── Jog ────────────────────────────────────────────────────
@@ -1717,11 +1723,18 @@ function setSpeed(v) {
 }
 
 // ── Motors ─────────────────────────────────────────────────
-function toggleMotors() {
-  motorsOn = !motorsOn;
-  document.getElementById('motorTrack').className = 'toggle-track' + (motorsOn ? ' on' : '');
-  document.getElementById('motorLabel').textContent = motorsOn ? 'Motors held when idle (squeals)' : 'Motors released when idle (quiet)';
-  send(motorsOn ? 'E' : 'D');
+// Between moves the drivers are either released (D: quiet, no holding
+// torque) or held (E: holding torque, the DRV8825s squeal). Moves are powered
+// and counted in both. The buttons show the firmware's state, which the
+// server tracks from its ENABLED / DISABLED / READY replies.
+function setIdleMode(mode) {
+  if (!connected) { log('Stage not connected', 'err'); return; }
+  send(mode === 'hold' ? 'E' : 'D');
+}
+
+function renderIdleMode() {
+  document.getElementById('idleRelease').classList.toggle('active', idleMode === 'release');
+  document.getElementById('idleHold').classList.toggle('active', idleMode === 'hold');
 }
 
 // ── UI Updates ─────────────────────────────────────────────
@@ -2360,8 +2373,8 @@ async function applyCamConfig() {
 }
 
 // ── Init ───────────────────────────────────────────────────
-log('XYZ Stage Controller ready.', 'sys');
-log('Open Chrome/Edge and click Connect.', 'sys');
+log('Litho control ready — the stage connects automatically.', 'sys');
+startStageEvents();
 updateLimitsUI();
 updateCalBadge();
 updateCalUI();
