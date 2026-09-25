@@ -17,6 +17,36 @@ Only one process can hold a USB3 Basler camera at a time — **close pylon Viewe
 before running these scripts**, or you get
 `Device is exclusively opened by another client`.
 
+## Recommended settings (live view of the projector)
+
+```powershell
+.\camera\run.ps1
+# which runs:
+.\.venv\Scripts\python.exe camera\deflicker_live.py --full --scale 0.5 --exposure 400 --keep-frac 0.8 --max-hold 0.5
+```
+
+| flag | why |
+| --- | --- |
+| `--full` | full sensor, 1936×1216 |
+| no `--fps` | uncapped (41 fps). Capped rates of 240/n (40, 30, 24, 20, 15…) can lock into the projector's dark gap for seconds |
+| `--exposure 400` | bright desktop content clips on 28 % of pixels at 1000 µs, 5 % at 400 µs, none at 200 µs. Lower it if bright areas still clip; raise it if the image is too dark |
+| `--keep-frac 0.8` | keep frames at least 80 % as bright as the recent brightest. The rule is relative, so it follows scene and exposure changes with no numbers to tune; `[` / `]` adjust it by 0.02 |
+| `--max-hold 0.5` | never hold one frame on screen longer than 0.5 s (the default) |
+
+No `--threshold-low` or `--threshold-high`: `--keep-frac` replaces them.
+
+Measured live on the desktop image, 20 s each:
+
+| exposure | display updates | longest time a frame stayed up | clipped pixels |
+| --- | --- | --- | --- |
+| 1000 µs | 24/s | 98 ms | 28 % |
+| **400 µs** | **23/s** | **98 ms** | **5 %** |
+| 200 µs | 19/s | 292 ms | 0 % |
+
+Frames that pass `--keep-frac 0.8` vary by about 7 % in brightness at 400 µs.
+To remove that too, use a whole-period exposure (below), which needs less
+light.
+
 ## Why the camera sees flicker (measured 2026-09-25)
 
 The projector doesn't give off steady light, and the camera's short exposure
@@ -189,7 +219,16 @@ everything. `--max-hold 0` restores the old behaviour of holding
 indefinitely. Forced frames are counted separately and aren't written to
 `--record`.
 
-`--duration 10` quits after 10 s, for unattended tests.
+**Relative keep rule.** `--keep-frac 0.8` keeps a frame when its mean is at
+least 0.8 × the 95th percentile of the last ~2 s of frame means. With the
+projector, frame brightness is a continuous spread from black up to "saw the
+full light". The top of that spread is the good level, and a fixed cutoff
+stops fitting as soon as the scene or exposure changes. This mode replaces
+`--threshold-low` and skips calibration; `r` relearns the recent level.
+There's no high cutoff unless `--threshold-high` is given.
+
+`--duration 10` quits after 10 s, for unattended tests. The exit summary gives
+the display update rate and the longest time any frame stayed on screen.
 
 The frame rate is uncapped unless `--fps` is given. The camera remembers a cap
 from earlier runs (pylon Viewer, `flicker.py`), so the script clears it on
@@ -200,7 +239,7 @@ open. Don't pass `--fps` values of 240/n; see
 | --- | --- |
 | `q` / `Esc` | quit |
 | `r` | recalibrate (only the cutoffs you did not pin on the command line) |
-| `[` / `]` | lower / raise the **low** cutoff by 1 |
+| `[` / `]` | lower / raise the **low** cutoff by 1 (with `--keep-frac`: the fraction by 0.02) |
 | `{` / `}` | lower / raise the **high** cutoff by 1 (shift + `[` / `]`) |
 | `space` | toggle deflicker off/on to compare against the raw flicker |
 | `s` | save a snapshot PNG |

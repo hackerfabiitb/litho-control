@@ -56,9 +56,18 @@ def parse_args():
                         "(default 0.5, 0 = hold indefinitely)")
     p.add_argument("--duration", type=float, default=0,
                    help="quit after this many seconds (default 0 = run until q)")
+    p.add_argument("--keep-frac", type=float, default=None,
+                   help="keep frames at least this fraction as bright as the "
+                        "recent brightest (95th percentile of the last ~2 s of "
+                        "frame means), e.g. 0.8. Replaces --threshold-low and "
+                        "the auto band, and follows scene and exposure changes. "
+                        "No high cutoff unless --threshold-high is given.")
     add_threshold_args(p)
     add_camera_args(p)
-    return p.parse_args()
+    args = p.parse_args()
+    if args.keep_frac is not None and args.threshold_low is not None:
+        p.error("--keep-frac and --threshold-low are alternatives; pass one")
+    return args
 
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
@@ -132,6 +141,13 @@ def main():
 
     low = args.threshold_low
     high = float("inf") if args.no_high else args.threshold_high
+    keep_frac = args.keep_frac
+    recent_means = deque(maxlen=80)  # ~2 s at 41 fps, for --keep-frac
+    if keep_frac is not None:
+        # Relative mode: low follows the recent brightest frames, so there
+        # is nothing to calibrate; the high cutoff is only what was pinned.
+        high = args.threshold_high if args.threshold_high is not None else float("inf")
+        low = 0.0
     # Only calibrate what the user did not pin. --no-high counts as pinned.
     calibrating = low is None or high is None
     calib_means, calib_sats = [], []
@@ -144,6 +160,7 @@ def main():
     unreliable = False               # auto split found only one population
     total = kept = 0
     n_black = n_blown = n_forced = 0
+    longest_hold = 0.0               # longest time one frame stayed on screen
     recent = deque(maxlen=120)       # (is_kept,) over the last ~3 s
     kept_times = deque(maxlen=60)
     writer = None
@@ -156,6 +173,13 @@ def main():
         for _, frame, _ in grab_frames(cam, pylon.GrabStrategy_LatestImageOnly):
             mean, _, _, sat = frame_score(frame)
             total += 1
+            recent_means.append(mean)
+            if keep_frac is not None:
+                # The projector's light is on for ~2/3 of every 4.167 ms, so
+                # the top of the recent brightness spread is what a frame that
+                # saw the full light looks like; keep frames close to it.
+                low = (keep_frac * float(np.percentile(recent_means, 95))
+                       if len(recent_means) >= 10 else 0.0)
 
             if calibrating:
                 calib_means.append(mean)
@@ -201,6 +225,7 @@ def main():
                 if (is_black or is_blown) and deflicker_on and not forced:
                     display = last_shown
                 else:
+                    longest_hold = max(longest_hold, now - last_update)
                     last_shown, last_update = frame, now
                     display = frame
 
@@ -256,15 +281,17 @@ def main():
             state = ("   [CALIBRATING]" if calibrating else
                      f"   FORCED: {kind} (held {args.max_hold:g} s)" if forced else
                      f"   DROPPED: {kind}" if dropped else "")
+            keep_text = (f"keep >= {keep_frac:.2f} x recent top = {low:.1f}"
+                         if keep_frac is not None else
+                         f"keep {low if low else 0:.1f} .. {hi_text}")
             status = [
-                f"mean {mean:7.2f}   keep {low if low else 0:.1f} .. {hi_text}"
-                + state,
+                f"mean {mean:7.2f}   {keep_text}" + state,
                 f"kept {kept}/{total}   dropping {drop_pct:4.1f}% (recent)   "
                 f"black {n_black}  blown {n_blown}  forced {n_forced}",
                 f"in {in_rate:5.1f} fps -> out {out_rate:5.1f} fps"
                 + ("   DEFLICKER OFF" if not deflicker_on else ""),
             ]
-            if unreliable and args.threshold_low is None:
+            if unreliable and args.threshold_low is None and keep_frac is None:
                 # One brightness population: the auto low cutoff has split good
                 # frames in half rather than found a flicker.
                 status.append("auto cutoff unreliable - set --threshold-low")
@@ -275,6 +302,10 @@ def main():
                     args.duration and time.perf_counter() - t_start > args.duration):
                 break
             elif key == ord("r"):
+                if keep_frac is not None:
+                    recent_means.clear()     # relearn the recent top level
+                    print("relearning the recent brightness...")
+                    continue
                 calibrating = True
                 calib_means, calib_sats = [], []
                 if args.threshold_low is None:
@@ -282,6 +313,10 @@ def main():
                 if args.threshold_high is None and not args.no_high:
                     high = None
                 print("recalibrating...")
+            elif key == ord("[") and keep_frac is not None:
+                keep_frac = max(0.0, round(keep_frac - 0.02, 2))
+            elif key == ord("]") and keep_frac is not None:
+                keep_frac = min(1.0, round(keep_frac + 0.02, 2))
             elif key == ord("["):
                 low = max(0.0, (low or 0) - 1.0)
             elif key == ord("]"):
@@ -314,6 +349,9 @@ def main():
               f"({100.0 * (total - kept) / total:.1f}% dropped: "
               f"{n_black} black, {n_blown} blown out; {n_forced} of those "
               f"shown anyway after {args.max_hold:g} s)")
+        print(f"display updated at {kept + n_forced} of {total} frames "
+              f"({(kept + n_forced) / max(time.perf_counter() - t_start, 1e-6):.1f}/s); "
+              f"longest a frame stayed on screen: {1e3 * longest_hold:.0f} ms")
     return 0
 
 

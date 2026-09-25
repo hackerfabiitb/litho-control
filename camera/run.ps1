@@ -1,1 +1,1 @@
-& "$PSScriptRoot\..\.venv\Scripts\python.exe" "$PSScriptRoot\deflicker_live.py" --full --scale 0.5 --exposure 1000 --threshold-low 48
+& "$PSScriptRoot\..\.venv\Scripts\python.exe" "$PSScriptRoot\deflicker_live.py" --full --scale 0.5 --exposure 400 --keep-frac 0.8 --max-hold 0.5
