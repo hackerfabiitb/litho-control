@@ -18,7 +18,7 @@
 
 ## Layout
 - `camera/`: Basler camera, flicker removal, live view (`camera\run.ps1`).
-- `projector/`: DLP471TEEVM: test patterns, calibration, DMD diagnostics.
+- `projector/`: DLP471TPEVM: test patterns, calibration, DMD diagnostics.
   Reuse `display.py` and `capture.py` rather than writing new pattern or
   capture code.
 - `xyz_stage/`: Arduino Uno stepper stage. Firmware in `firmware/xyz1/`; the

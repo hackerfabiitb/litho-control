@@ -1,8 +1,13 @@
-# projector — TI DLP471TEEVM
+# projector — TI DLP471TPEVM
 
-The projector is a TI **DLP471TEEVM**: a DLPC7540 controller driving a 0.47"
-DLP471TE DMD with 1920×1080 mirrors. XPR pixel shifting turns those into a
-3840×2160 image, and 2 input px correspond to about 1 mirror in each axis.
+The projector is a TI **DLP471TPEVM**. The GUI's EVM Selection confirms it,
+and it enumerates on USB as a DLPC7540 controller. It drives a 0.47" DLP471TP
+4K UHD DMD and takes a 3840×2160 input.
+
+The mirror-column numbers in this README assume a 1920×1080 mirror array with
+XPR pixel shifting, where 2 input px correspond to about 1 mirror in each
+axis. That hasn't been checked against the DLP471TP datasheet. The input-pixel
+numbers are measured and don't depend on it.
 
 It has two connections to the PC:
 
@@ -75,37 +80,53 @@ columns / rows), `checkerN`, `hramp`, `vramp`, `marker`.
 
 ## Debugging log
 
-### 2026-09-25 — no light; GUI shows "EVM Status: Ready; Curtain" — OPEN
+### 2026-09-25 — no light; LEDs off and won't enable; GUI shows "Ready; Curtain" — OPEN
 
-**Symptom.** Light was visible earlier in the day, but now none reaches the
-target. Neither "Switch to External Video" nor the built-in test patterns in
-the DLP EVM GUI 3.2.0.7 change anything.
+**Symptom.** Light was visible earlier in the day; by about 20:24 there was
+none, by eye or on camera. Neither "Switch to External Video" nor the
+built-in test patterns in the DLP EVM GUI 3.2.0.7 change anything.
+
+**Measured** with `dmd_probe.py white black`:
+
+| exposure | white | black | meaning |
+| --- | --- | --- | --- |
+| 100 µs, 0 dB | 0.0 | 0.0 | earlier today, white read ~155 here |
+| 20 ms, +12 dB | 149.1 | 149.3 | room light only; the projector adds nothing |
 
 **Checked.**
-- HDMI is still enumerated (`Generic Monitor (DLP PICO 4K)`).
-- USB `VID_0451&PID_7540` is present with status OK.
-- A camera measurement wasn't possible because pylon Viewer had the camera open.
+- HDMI is enumerated (`Generic Monitor (DLP PICO 4K)`).
+- USB `VID_0451&PID_7540` is OK, and the GUI talks to the controller.
+- EVM Selection is DLP471TPEVM, which is correct. The TEEVM name used
+  earlier in this README was wrong.
+- The GUI search finds no "curtain" setting.
+- LED Current → **Get** reads all three LEDs as **disabled**. Enabling them
+  with **Set** doesn't take effect: Get still reads them as disabled
+  afterwards.
+- The GUI's debug log (`Documents\USB2ANY\Logs`) only covers the USB2ANY I2C
+  adapter, which isn't used, so it's no help. The GUI's command definitions
+  are encrypted.
 
-**Observations from the GUI.**
-- The status bar reads **Curtain**. With curtain enabled, the controller
-  replaces the whole image with a solid curtain colour, usually black, after
-  source selection. That fits both external video and test patterns showing
-  no change.
-- The window title reads **DLP471TPEVM**, while this board was identified as a
-  DLP471TEEVM and enumerates as a DLPC7540. It's worth checking that the GUI's
-  EVM Selection matches the board.
-- LED Current panel: Red is enabled at 101 mA. Green and Blue are unchecked,
-  and their current fields are blank, which suggests the values were never
-  read back with Get.
+**Interpretation.** The controller is up and accepts commands, but it's
+holding the illumination off and the image behind the curtain. It also
+refuses LED enables, which suggests firmware protection rather than a missed
+setting. The usual reasons for that are:
+1. **DMD not detected, or the DMD interface failing to start.** This fits the
+   earlier finding (entry below) of corrupted data reaching four DMD blocks.
+   It would mean the same controller-to-DMD connection has got worse, or has
+   been disturbed by handling or a reseat.
+2. **An illumination fault**: the LED driver, LED supply, or temperature
+   (fan) latching the LEDs off.
+3. **A stuck controller state** that a full power cycle clears.
 
 **Next steps.**
-1. Turn the curtain off. It is probably under Display → Display Settings; the
-   GUI's search box can find it. Then click Set.
-2. In the LED Current panel, click **Get** to read the real LED state. Don't
-   click Set while any field is blank.
-3. Confirm EVM Selection matches the board label.
-4. With pylon Viewer closed, measure the light with `dmd_probe.py white black`.
-   Earlier today, white read a mean of about 155 at 100 µs.
+1. Fully power-cycle the EVM: unplug the power supply for at least 10 s, not
+   just USB.
+2. If there's still no light, check the GUI's **Information** and **Debug**
+   pages for system status, DMD status, or error and fault flags.
+3. Look at the board's status LEDs, and check whether the fan spins.
+4. With power off: check that the DMD flex connectors are fully latched at
+   both ends and the right way round, and that the DMD clamp is even.
+5. Measure again with `dmd_probe.py white black` to confirm.
 
 ### 2026-09-25 — vertical stripes on the projected image — OPEN
 

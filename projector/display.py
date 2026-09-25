@@ -58,7 +58,7 @@ def list_monitors():
 
 def find_projector(name=None):
     """The projector's monitor: `name` (e.g. DISPLAY5) if given, else the one
-    non-primary monitor. The DLP471TEEVM shows up as a 3840x2160 display."""
+    non-primary monitor. The DLP471TPEVM shows up as a 3840x2160 display."""
     monitors = list_monitors()
     if name:
         match = [m for m in monitors if m.name.upper().endswith(name.upper())]

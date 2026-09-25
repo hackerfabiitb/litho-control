@@ -6,7 +6,7 @@ a camera watches it, and an XYZ stage moves the sample.
 | directory | hardware | status |
 | --- | --- | --- |
 | [`camera/`](camera/README.md) | Basler acA1920-40um (USB3, mono) | live view with DLP flicker removed; flicker measurement |
-| [`projector/`](projector/README.md) | TI DLP471TEEVM over HDMI + USB | test patterns, camera-to-DMD calibration, DMD fault scan |
+| [`projector/`](projector/README.md) | TI DLP471TPEVM over HDMI + USB | test patterns, camera-to-DMD calibration, DMD fault scan |
 | [`xyz_stage/`](xyz_stage/README.md) | Arduino Uno + stepper shield, 3 steppers (COM4) | `xyz1` firmware flashed; browser UI (Web Serial) from litho-ui |
 
 ## Setup
@@ -50,7 +50,7 @@ Newest first. The details are in each directory's README.
 
 | date | area | issue | status |
 | --- | --- | --- | --- |
-| 2026-09-25 | projector | No light. The GUI shows "Ready; Curtain", and neither external video nor internal patterns change anything. The curtain is probably on; the GUI title also reads DLP471**TP**EVM. [Details](projector/README.md#2026-09-25--no-light-gui-shows-evm-status-ready-curtain--open) | open: turn the curtain off, Get the LED state, check EVM Selection |
+| 2026-09-25 | projector | No light at all (camera: white = black = 0 at 100 µs). The GUI shows "Ready; Curtain", all LEDs read disabled, and Set doesn't enable them, so the firmware is holding the illumination off. Suspected DMD-link or illumination fault. [Details](projector/README.md#2026-09-25--no-light-leds-off-and-wont-enable-gui-shows-ready-curtain--open) | open: full power cycle, then check the GUI Information/Debug pages for faults |
 | 2026-09-25 | xyz_stage | The Uno was running a different sketch ("Variable Speed Controller"), not the `xyz1` firmware the UI needs. [Details](xyz_stage/README.md#2026-09-25--set-up-xyz1-flashed) | done: old flash backed up, `xyz1` flashed; the stored position is stale, so zero before use |
 | 2026-09-25 | projector | Four 128-mirror-column bands at DMD mirror columns 832–960, 1216–1344, 1472–1600 and 1728+ show wrong data (stuck on, noise, stale content), depending on the image. The mirrors themselves work, which points to the controller-to-DMD flex or DMD seating. [Details](projector/README.md#2026-09-25--vertical-stripes-on-the-projected-image--open) | open: reseat the flex, then run the GUI internal test patterns |
 | 2026-09-25 | projector | Not detected on USB | fixed: the projector was switched off |
