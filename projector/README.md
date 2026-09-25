@@ -75,6 +75,38 @@ columns / rows), `checkerN`, `hramp`, `vramp`, `marker`.
 
 ## Debugging log
 
+### 2026-09-25 — no light; GUI shows "EVM Status: Ready; Curtain" — OPEN
+
+**Symptom.** Light was visible earlier in the day, but now none reaches the
+target. Neither "Switch to External Video" nor the built-in test patterns in
+the DLP EVM GUI 3.2.0.7 change anything.
+
+**Checked.**
+- HDMI is still enumerated (`Generic Monitor (DLP PICO 4K)`).
+- USB `VID_0451&PID_7540` is present with status OK.
+- A camera measurement wasn't possible because pylon Viewer had the camera open.
+
+**Observations from the GUI.**
+- The status bar reads **Curtain**. With curtain enabled, the controller
+  replaces the whole image with a solid curtain colour, usually black, after
+  source selection. That fits both external video and test patterns showing
+  no change.
+- The window title reads **DLP471TPEVM**, while this board was identified as a
+  DLP471TEEVM and enumerates as a DLPC7540. It's worth checking that the GUI's
+  EVM Selection matches the board.
+- LED Current panel: Red is enabled at 101 mA. Green and Blue are unchecked,
+  and their current fields are blank, which suggests the values were never
+  read back with Get.
+
+**Next steps.**
+1. Turn the curtain off. It is probably under Display → Display Settings; the
+   GUI's search box can find it. Then click Set.
+2. In the LED Current panel, click **Get** to read the real LED state. Don't
+   click Set while any field is blank.
+3. Confirm EVM Selection matches the board label.
+4. With pylon Viewer closed, measure the light with `dmd_probe.py white black`.
+   Earlier today, white read a mean of about 155 at 100 µs.
+
 ### 2026-09-25 — vertical stripes on the projected image — OPEN
 
 **Symptom.** With the Windows desktop on the projector, the camera sees four
