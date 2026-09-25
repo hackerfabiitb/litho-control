@@ -1,0 +1,6 @@
+@echo off
+echo Starting camera server...
+start "" python "%~dp0camera_server.py"
+timeout /t 2 /nobreak >nul
+echo Opening stage controller...
+start "" chrome "%~dp0stage_controller.html"

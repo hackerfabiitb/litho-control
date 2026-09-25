@@ -8,7 +8,7 @@
   - the top-level `README.md`
   - `camera/README.md`
   - `projector/README.md`
-  - `stage/README.md`, once it exists
+  - `xyz_stage/README.md`
 - **Record debugging results.** Add each hardware investigation to the
   "Debugging log" of the relevant directory's README. Include the date,
   symptom, method, measured results, interpretation, next steps and status.
@@ -21,7 +21,9 @@
 - `projector/`: DLP471TEEVM: test patterns, calibration, DMD diagnostics.
   Reuse `display.py` and `capture.py` rather than writing new pattern or
   capture code.
-- `stage/`: XYZ stage (not started).
+- `xyz_stage/`: Arduino Uno stepper stage. Firmware in `firmware/xyz1/`; the
+  browser UI is `stage_controller.html` (`start_ui.ps1`). Use
+  `find_arduino.find_arduino()` to get the port rather than hard-coding it.
 - One venv at the repo root: `.venv\Scripts\python.exe`. Run scripts from the
   repo root.
 
@@ -33,3 +35,10 @@
   a per-monitor-DPI-aware process, which `projector/display.py` sets up.
 - The projector must be powered on to appear on USB (`VID_0451&PID_7540`).
 - Camera settings (binning, AOI) persist in the camera between runs.
+- The stage Arduino is a genuine Uno on COM4. COM3 is an unrelated CH343
+  adapter. Opening the port resets the Uno. Only one program can hold COM4 at
+  a time, so if the browser UI is connected, ask the user to disconnect first.
+- Don't send motion commands to the stage without the user's go-ahead: no
+  axis has soft limits yet, and the stored position is not trustworthy.
+- Flash with the IDE's bundled arduino-cli (path in `xyz_stage/README.md`).
+  Back up the existing flash with avrdude before overwriting a sketch.

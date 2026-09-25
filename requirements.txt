@@ -7,3 +7,4 @@
 pypylon>=4.0          # tested: 26.7
 opencv-python>=4.8    # tested: 5.0.0.93
 numpy>=1.26           # tested: 2.5.1
+pyserial>=3.5         # tested: 3.5 (xyz_stage)

@@ -1,0 +1,2374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>XYZ Stage Controller</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0d0d0d;
+    --bg1:      #141414;
+    --bg2:      #1c1c1c;
+    --bg3:      #242424;
+    --border:   #2a2a2a;
+    --border2:  #383838;
+    --text:     #e8e8e8;
+    --muted:    #666;
+    --dim:      #444;
+    --accent:   #00e5a0;
+    --accent2:  #00b87a;
+    --warn:     #f0a500;
+    --danger:   #e05555;
+    --blue:     #4a9eff;
+    --mono:     'IBM Plex Mono', monospace;
+    --sans:     'IBM Plex Sans', sans-serif;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; }
+
+  /* ── Layout ── */
+  .shell {
+    display: grid;
+    grid-template-rows: 44px 1fr;
+    grid-template-columns: 220px 1fr 260px;
+    height: 100vh;
+    gap: 0;
+  }
+
+  /* ── Topbar ── */
+  .topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg1);
+  }
+  .topbar-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .topbar-sep { flex: 1; }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .status-dot.on  { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .status-dot.err { background: var(--danger); }
+  .status-text { font-size: 11px; color: var(--muted); letter-spacing: 0.05em; }
+  .conn-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 5px 14px;
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .conn-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .conn-btn.active { border-color: var(--danger); color: var(--danger); }
+  .conn-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .conn-btn.cal-trigger:hover:not(:disabled) { border-color: var(--warn); color: var(--warn); }
+
+  /* ── Left Panel ── */
+  .left {
+    grid-row: 2;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Center Panel ── */
+  .center {
+    grid-row: 2;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+    transition: opacity 0.2s;
+  }
+  .center-scroll {
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .center-scroll::-webkit-scrollbar { width: 4px; }
+  .center-scroll::-webkit-scrollbar-track { background: transparent; }
+  .center-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  /* ── Camera section ── */
+  .cam-section {
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg1);
+    flex-shrink: 0;
+  }
+  .cam-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg1);
+  }
+  .cam-title {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    flex: 1;
+  }
+  .cam-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .cam-dot.on  { background: var(--accent); box-shadow: 0 0 5px var(--accent); }
+  .cam-dot.err { background: var(--danger); }
+  .cam-status-text { font-size: 10px; color: var(--muted); }
+  .cam-feed-wrap {
+    background: #080808;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+    height: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cam-feed-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+  .cam-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--dim);
+    font-size: 11px;
+    text-align: center;
+    padding: 12px;
+    pointer-events: none;
+  }
+  .cam-placeholder-icon {
+    font-size: 28px;
+    color: var(--border2);
+    margin-bottom: 4px;
+  }
+  .cam-controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 14px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+  .cam-ctrl-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .cam-ctrl-label {
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    white-space: nowrap;
+  }
+  .cam-ctrl-unit {
+    font-size: 9px;
+    color: var(--dim);
+  }
+  .cam-apply-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.12s;
+    white-space: nowrap;
+  }
+  .cam-apply-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .cam-sep { flex: 1; }
+  .cam-err-text { font-size: 10px; color: var(--danger); display: none; }
+
+  /* ── Right Panel ── */
+  .right {
+    grid-row: 2;
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Section headers ── */
+  .section-hdr {
+    padding: 10px 14px 8px;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg1);
+    flex-shrink: 0;
+  }
+
+  /* ── Position readout ── */
+  .pos-panel {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .pos-row {
+    display: grid;
+    grid-template-columns: 18px 1fr 24px;
+    align-items: center;
+    gap: 8px;
+  }
+  .pos-axis {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+  .pos-bar-wrap {
+    height: 3px;
+    background: var(--bg3);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  .pos-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 1px;
+    transition: width 0.25s ease;
+    width: 0%;
+  }
+  .pos-val {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text);
+    text-align: right;
+    min-width: 52px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Step size ── */
+  .step-panel {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .step-label { font-size: 9px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 8px; }
+  .step-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 8px; }
+  .step-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 5px 2px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: var(--bg2);
+    color: var(--muted);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.1s;
+  }
+  .step-btn:hover { border-color: var(--border2); color: var(--text); }
+  .step-btn.on { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.05); }
+  .custom-step-row { display: flex; gap: 6px; align-items: center; }
+  .custom-step-row label { font-size: 9px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
+  .tinput {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    padding: 4px 8px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .tinput:focus { border-color: var(--accent); }
+  .tinput::placeholder { color: var(--dim); }
+
+  /* ── Speed ── */
+  .speed-panel {
+    padding: 12px 14px;
+    flex-shrink: 0;
+  }
+  .speed-row { display: flex; align-items: center; gap: 10px; }
+  .speed-row label { font-size: 9px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
+  .speed-row input[type=range] {
+    flex: 1;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .speed-val { font-size: 10px; color: var(--text); min-width: 50px; text-align: right; }
+
+  /* ── Motor toggle ── */
+  .motor-panel {
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    margin-top: auto;
+    flex-shrink: 0;
+  }
+  .motor-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+  }
+  .toggle-track {
+    width: 28px; height: 14px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 7px;
+    position: relative;
+    transition: background 0.2s;
+  }
+  .toggle-track.on { background: rgba(0,229,160,0.2); border-color: var(--accent); }
+  .toggle-thumb {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--muted);
+    position: absolute;
+    top: 1px; left: 1px;
+    transition: left 0.2s, background 0.2s;
+  }
+  .toggle-track.on .toggle-thumb { left: 15px; background: var(--accent); }
+
+  /* ── Jog pad ── */
+  .jog-card {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 20px;
+  }
+  .jog-card-title { font-size: 9px; color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 20px; }
+  .jog-outer { display: flex; gap: 24px; align-items: center; justify-content: center; }
+  .jog-xy { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 4px; }
+  .jbtn {
+    font-family: var(--mono);
+    font-size: 18px;
+    border: 1px solid var(--border2);
+    border-radius: 3px;
+    background: var(--bg2);
+    color: var(--dim);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.08s;
+    user-select: none;
+  }
+  .jbtn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.04); }
+  .jbtn:active, .jbtn.flash { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.12); transform: scale(0.93); }
+  .jbtn.center-cell {
+    background: var(--bg3);
+    border-color: var(--border);
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    cursor: default;
+  }
+  .jbtn.center-cell:hover { border-color: var(--border); color: var(--muted); background: var(--bg3); transform: none; }
+  .jog-z { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .jog-z-label { font-size: 9px; color: var(--muted); letter-spacing: 0.12em; margin-bottom: 2px; }
+  .jbtn-z { width: 52px; height: 52px; }
+  .jog-z-track {
+    width: 1px; height: 36px;
+    background: linear-gradient(to bottom, var(--accent2), transparent);
+    margin: 2px auto;
+  }
+  .kbd-row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+  .kbd { font-size: 9px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 2px; padding: 2px 6px; color: var(--muted); }
+
+  /* ── Goto / Relative cards ── */
+  .twoCol { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .mcard {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 16px;
+  }
+  .mcard-title { font-size: 9px; color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 12px; }
+  .axis-row { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .axis-lbl { font-size: 10px; color: var(--muted); font-weight: 600; }
+  .go-btn {
+    width: 100%;
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    padding: 7px;
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+  .go-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .rel-row { display: flex; gap: 6px; margin-bottom: 8px; }
+  .rel-sel {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    padding: 4px 6px;
+    outline: none;
+    cursor: pointer;
+  }
+  .rel-sel:focus { border-color: var(--accent); }
+
+  /* ── Home / Zero grid ── */
+  .hzCard {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 16px;
+  }
+  .hzCard-title { font-size: 9px; color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 12px; }
+  .hz-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .hz-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 7px 4px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: var(--bg2);
+    color: var(--muted);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.12s;
+    letter-spacing: 0.06em;
+  }
+  .hz-btn:hover { border-color: var(--border2); color: var(--text); }
+  .hz-btn.warn:hover { border-color: var(--warn); color: var(--warn); }
+
+  /* ── Log ── */
+  .log-wrap { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  .log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+    font-size: 11px;
+    line-height: 1.6;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .log::-webkit-scrollbar { width: 4px; }
+  .log::-webkit-scrollbar-track { background: transparent; }
+  .log::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .log-line { display: flex; gap: 8px; }
+  .log-ts { color: var(--dim); min-width: 22px; flex-shrink: 0; }
+  .log-body { color: var(--muted); word-break: break-all; }
+  .log-line.tx  .log-body { color: var(--blue); }
+  .log-line.rx  .log-body { color: var(--accent); }
+  .log-line.err .log-body { color: var(--danger); }
+  .log-line.sys .log-body { color: var(--warn); }
+  .log-line.cal .log-body { color: #c084fc; }
+  .log-line.undo .log-body { color: var(--warn); }
+  .raw-row {
+    padding: 8px 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .raw-send {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 4px 10px;
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.12s;
+  }
+  .raw-send:hover { color: var(--text); border-color: var(--border2); }
+
+  /* ── Limits indicator ── */
+  .limits-panel {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .limits-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .limits-title { font-size: 9px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; }
+  .cal-badge {
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--dim);
+    padding: 2px 5px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+  }
+  .cal-badge.ok { color: var(--accent); border-color: rgba(0,229,160,0.3); }
+  .limit-row { display: flex; justify-content: space-between; font-size: 10px; color: var(--dim); margin-bottom: 2px; }
+  .limit-row span:last-child { color: var(--muted); }
+
+  /* scrollbar handled per-panel above */
+
+  /* ════════════════════════════════════════════════
+     CALIBRATION MODAL
+  ════════════════════════════════════════════════ */
+  .cal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: transparent;
+    z-index: 1000;
+    pointer-events: none;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 50px 16px 16px 0;
+  }
+  .cal-overlay.open { display: flex; }
+
+  .cal-modal {
+    pointer-events: all;
+    background: var(--bg1);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    width: 400px;
+    max-height: calc(100vh - 66px);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.8), 0 0 0 1px var(--border);
+  }
+  .cal-modal::-webkit-scrollbar { width: 4px; }
+  .cal-modal::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .cal-header {
+    display: flex;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--bg1);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .cal-title {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    flex: 1;
+  }
+  .cal-close-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px 6px;
+    border-radius: 2px;
+    font-family: var(--mono);
+    line-height: 1;
+    transition: color 0.15s;
+  }
+  .cal-close-btn:hover { color: var(--text); }
+
+  .cal-body { padding: 18px; display: flex; flex-direction: column; gap: 16px; }
+
+  /* Axis status rows */
+  .cal-axes { display: flex; flex-direction: column; gap: 6px; }
+  .cal-axis-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    transition: border-color 0.2s;
+  }
+  .cal-axis-row.active-row { border-color: rgba(240,165,0,0.4); }
+  .cal-axis-letter {
+    font-size: 13px;
+    font-weight: 600;
+    width: 14px;
+    flex-shrink: 0;
+  }
+  .cal-axis-letter.X { color: #ff6b6b; }
+  .cal-axis-letter.Y { color: #69db7c; }
+  .cal-axis-letter.Z { color: #74c0fc; }
+  .cal-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--border2);
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .cal-dot.ok     { background: var(--accent); box-shadow: 0 0 4px var(--accent); }
+  .cal-dot.active { background: var(--warn);   box-shadow: 0 0 6px var(--warn); animation: blink 0.9s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .cal-axis-range { flex: 1; font-size: 10px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .cal-axis-btn {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.12s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .cal-axis-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .cal-axis-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .cal-all-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 8px;
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+    width: 100%;
+  }
+  .cal-all-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .cal-all-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* Active calibration section */
+  .cal-active-section {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: var(--bg2);
+    border: 1px solid rgba(240,165,0,0.35);
+    border-radius: 3px;
+  }
+  .cal-active-section.show { display: flex; }
+  .cal-active-hdr {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .cal-active-title {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--warn);
+  }
+  .cal-step-indicator {
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: 0.05em;
+  }
+
+  .cal-instruction {
+    font-size: 11px;
+    color: var(--text);
+    line-height: 1.7;
+  }
+  .cal-dir-pos { color: var(--accent); font-weight: 600; }
+  .cal-dir-neg { color: var(--blue);   font-weight: 600; }
+
+  /* Live position during calibration */
+  .cal-pos-monitor {
+    display: flex;
+    gap: 20px;
+    padding: 8px 10px;
+    background: var(--bg3);
+    border-radius: 2px;
+  }
+  .cal-pm-item { display: flex; gap: 5px; align-items: baseline; }
+  .cal-pm-label { font-size: 9px; color: var(--muted); letter-spacing: 0.1em; }
+  .cal-pm-val { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text); min-width: 48px; }
+
+  /* Mark & Cancel buttons */
+  .mark-btn {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 14px;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    background: rgba(0,229,160,0.06);
+    color: var(--accent);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.12s;
+    user-select: none;
+  }
+  .mark-btn:hover   { background: rgba(0,229,160,0.13); }
+  .mark-btn:active  { background: rgba(0,229,160,0.22); transform: scale(0.98); }
+
+  .cal-cancel-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 7px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.12s;
+    width: 100%;
+  }
+  .cal-cancel-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* Log-only endpoint buttons (non-committing position note) */
+  .cal-endp-log-btn {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    padding: 4px 8px;
+    border: 1px dashed var(--border2);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--dim);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.12s;
+  }
+  .cal-endp-log-btn:hover { border-color: var(--warn); color: var(--warn); border-style: solid; }
+
+  /* Safety margin section */
+  .cal-section-sep {
+    border: none;
+    border-top: 1px solid var(--border);
+  }
+  .cal-section-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .cal-conf-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .cal-conf-row label { font-size: 9px; color: var(--muted); white-space: nowrap; letter-spacing: 0.08em; }
+  .cal-conf-row input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+  .cal-conf-val {
+    font-size: 12px;
+    color: var(--text);
+    min-width: 34px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .cal-conf-note { font-size: 10px; color: var(--dim); line-height: 1.6; }
+  .cal-eff-ranges { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+  .cal-eff-row { display: flex; justify-content: space-between; font-size: 10px; }
+  .cal-eff-axis { color: var(--muted); }
+  .cal-eff-val { color: var(--dim); font-variant-numeric: tabular-nums; }
+
+  /* ── Projector modal ── */
+  .proj-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.78); z-index: 1000;
+    align-items: center; justify-content: center;
+  }
+  .proj-overlay.open { display: flex; }
+  .proj-modal {
+    background: var(--bg1); border: 1px solid var(--border2);
+    border-radius: 4px; width: 500px; max-height: 90vh;
+    overflow-y: auto; display: flex; flex-direction: column;
+  }
+  .proj-modal::-webkit-scrollbar { width: 4px; }
+  .proj-modal::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .proj-header {
+    display: flex; align-items: center; padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: var(--bg1); z-index: 1;
+  }
+  .proj-title {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--blue);
+  }
+  .proj-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .proj-section-label {
+    font-size: 9px; font-weight: 600; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+  }
+  .proj-dropzone {
+    border: 1px dashed var(--border2); border-radius: 3px;
+    padding: 28px 20px; text-align: center; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--muted);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .proj-dropzone:hover, .proj-dropzone.dz-hover {
+    border-color: var(--blue); background: rgba(74,158,255,0.04);
+  }
+  .proj-dropzone-icon { font-size: 26px; color: var(--border2); margin-bottom: 2px; }
+  .proj-preview-wrap {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .proj-preview-img {
+    width: 100%; max-height: 220px; object-fit: contain;
+    background: #000; border-radius: 2px; display: block;
+    border: 1px solid var(--border);
+  }
+  .proj-preview-meta { display: flex; justify-content: space-between; align-items: center; }
+  .proj-screen-list { display: flex; flex-direction: column; gap: 4px; }
+  .proj-screen-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; background: var(--bg2);
+    border: 1px solid var(--border); border-radius: 3px;
+    cursor: pointer; transition: border-color 0.12s;
+  }
+  .proj-screen-item:hover { border-color: var(--border2); }
+  .proj-screen-item.selected { border-color: var(--blue); }
+  .proj-screen-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--border2); flex-shrink: 0;
+  }
+  .proj-screen-dot.ext { background: var(--blue); box-shadow: 0 0 5px var(--blue); }
+  .proj-screen-name { font-size: 11px; color: var(--text); flex: 1; }
+  .proj-screen-res { font-size: 10px; color: var(--dim); }
+  .proj-status-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--muted);
+  }
+  .proj-status-dot.on { background: var(--blue); box-shadow: 0 0 5px var(--blue); }
+  .proj-tip { font-size: 10px; color: var(--dim); line-height: 1.6; }
+
+  /* ── State panel (left) ── */
+  .state-panel {
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .state-info { font-size: 9px; color: var(--dim); margin-top: 5px; line-height: 1.5; }
+
+  /* ── Autofocus ── */
+  .af-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .af-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .af-row label { font-size: 9px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
+  .af-progress-wrap {
+    height: 3px; background: var(--bg3); border-radius: 2px;
+    overflow: hidden; margin-bottom: 6px; display: none;
+  }
+  .af-progress-bar { height: 100%; background: var(--blue); border-radius: 2px; width: 0%; transition: width 0.15s; }
+  .af-status { font-size: 10px; color: var(--dim); display: none; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+  .af-cancel-btn {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 5px; border: 1px solid var(--border); border-radius: 2px; background: transparent;
+    color: var(--muted); cursor: pointer; width: 100%; margin-top: 4px; display: none;
+    transition: all 0.12s;
+  }
+  .af-cancel-btn:hover { border-color: var(--danger); color: var(--danger); }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <span class="topbar-title">XYZ Stage</span>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div class="status-dot" id="dot"></div>
+      <span class="status-text" id="statusText">disconnected</span>
+    </div>
+    <div class="topbar-sep"></div>
+    <button class="conn-btn" id="undoBtn" onclick="undoLast()" disabled title="Revert position tracking to before the last command (no motor movement)">Undo</button>
+    <button class="conn-btn" id="projModalBtn" onclick="openProjModal()" style="border-color:var(--blue);color:var(--blue);opacity:0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">Projector</button>
+    <button class="conn-btn" id="connBtn" onclick="toggleConnect()">Connect</button>
+  </div>
+
+  <!-- LEFT PANEL -->
+  <div class="left">
+    <div class="section-hdr">Position</div>
+
+    <div class="pos-panel" id="posPanel">
+      <div class="pos-row">
+        <span class="pos-axis">X</span>
+        <div class="pos-bar-wrap"><div class="pos-bar" id="barX"></div></div>
+        <span class="pos-val" id="posX">—</span>
+      </div>
+      <div class="pos-row">
+        <span class="pos-axis">Y</span>
+        <div class="pos-bar-wrap"><div class="pos-bar" id="barY"></div></div>
+        <span class="pos-val" id="posY">—</span>
+      </div>
+      <div class="pos-row">
+        <span class="pos-axis">Z</span>
+        <div class="pos-bar-wrap"><div class="pos-bar" id="barZ"></div></div>
+        <span class="pos-val" id="posZ">—</span>
+      </div>
+    </div>
+
+    <div class="limits-panel">
+      <div class="limits-hdr">
+        <div class="limits-title">Limits (effective)</div>
+        <span class="cal-badge" id="calBadge">UNCAL</span>
+      </div>
+      <div class="limit-row"><span>X</span><span id="limX">—</span></div>
+      <div class="limit-row"><span>Y</span><span id="limY">—</span></div>
+      <div class="limit-row"><span>Z</span><span id="limZ">—</span></div>
+    </div>
+
+    <div class="step-panel">
+      <div class="step-label">Step size</div>
+      <div class="step-grid">
+        <button class="step-btn" onclick="setStep(1,this)">1</button>
+        <button class="step-btn" onclick="setStep(10,this)">10</button>
+        <button class="step-btn on" onclick="setStep(100,this)">100</button>
+        <button class="step-btn" onclick="setStep(500,this)">500</button>
+        <button class="step-btn" onclick="setStep(1000,this)">1k</button>
+      </div>
+      <div class="custom-step-row">
+        <label>CUSTOM</label>
+        <input class="tinput" type="number" id="customStep" placeholder="steps" oninput="setStepCustom(+this.value)" />
+      </div>
+    </div>
+
+    <div class="speed-panel">
+      <div class="step-label" style="margin-bottom:8px;">Speed (step delay µs)</div>
+      <div class="speed-row">
+        <label>FAST</label>
+        <input type="range" min="100" max="5000" value="800" step="50" id="speedSlider" oninput="setSpeed(+this.value)" />
+        <label>SLOW</label>
+      </div>
+      <div style="text-align:center;margin-top:4px;">
+        <span class="speed-val" id="speedVal">800 µs</span>
+      </div>
+    </div>
+
+    <div class="state-panel">
+      <div class="step-label">Saved State</div>
+      <div style="display:flex;gap:6px;">
+        <button class="hz-btn" style="flex:1;font-size:9px;" onclick="saveStateToFile()">Export ↓</button>
+        <button class="hz-btn" style="flex:1;font-size:9px;" onclick="loadStateFromFile()">Import ↑</button>
+      </div>
+      <div class="state-info" id="stateInfo">Auto-saved locally</div>
+    </div>
+
+    <div class="motor-panel">
+      <div class="motor-toggle" onclick="toggleMotors()">
+        <div class="toggle-track on" id="motorTrack"><div class="toggle-thumb"></div></div>
+        <span id="motorLabel">Motors enabled</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER PANEL -->
+  <div class="center" id="centerPanel">
+
+    <!-- CAMERA SECTION -->
+    <div class="cam-section">
+      <div class="cam-header">
+        <div class="cam-dot" id="camDot"></div>
+        <span class="cam-title">Camera Feed</span>
+        <span class="cam-status-text" id="camStatusText">not connected</span>
+        <div class="cam-sep"></div>
+        <button class="conn-btn" id="camConnBtn" onclick="toggleCamera()" style="font-size:10px;padding:4px 12px;">Connect Camera</button>
+      </div>
+      <div class="cam-feed-wrap" id="camFeedWrap">
+        <img id="camImg" src="" alt="" style="display:none;" onerror="onCamImgError()" />
+        <div class="cam-placeholder" id="camPlaceholder">
+          <div class="cam-placeholder-icon">⬡</div>
+          <div>Start <strong>camera_server.py</strong> then click Connect Camera</div>
+          <div style="font-size:10px;color:var(--border2);">Requires pypylon + opencv-python</div>
+        </div>
+      </div>
+      <div class="cam-controls">
+        <div class="cam-ctrl-group">
+          <span class="cam-ctrl-label">EXPOSURE</span>
+          <input class="tinput" type="number" id="camExposure" value="10000" min="100" max="1000000" style="width:90px;" />
+          <span class="cam-ctrl-unit">µs</span>
+        </div>
+        <div class="cam-ctrl-group">
+          <span class="cam-ctrl-label">FRAME RATE</span>
+          <input class="tinput" type="number" id="camFps" value="10" min="1" max="200" style="width:60px;" />
+          <span class="cam-ctrl-unit">fps</span>
+        </div>
+        <button class="cam-apply-btn" onclick="applyCamConfig()">Apply</button>
+        <span class="cam-err-text" id="camErrText"></span>
+      </div>
+    </div>
+
+    <!-- scrollable stage controls -->
+    <div class="center-scroll" id="centerScroll">
+
+    <!-- JOG PAD -->
+    <div class="jog-card">
+      <div class="jog-card-title">Jog control</div>
+      <div class="jog-outer">
+
+        <div class="jog-xy">
+          <!-- row 1 -->
+          <div></div>
+          <button class="jbtn" id="jYp" onclick="jog('Y',1)" title="+Y">↑</button>
+          <div></div>
+          <!-- row 2 -->
+          <button class="jbtn" id="jXn" onclick="jog('X',1,'jXn')" title="+X (left)">←</button>
+          <div class="jbtn center-cell">XY</div>
+          <button class="jbtn" id="jXp" onclick="jog('X',-1,'jXp')" title="-X (right)">→</button>
+          <!-- row 3 -->
+          <div></div>
+          <button class="jbtn" id="jYn" onclick="jog('Y',-1)" title="-Y">↓</button>
+          <div></div>
+        </div>
+
+        <div class="jog-z">
+          <div class="jog-z-label">Z</div>
+          <button class="jbtn jbtn-z" id="jZp" onclick="jog('Z',1)" title="+Z">↑</button>
+          <div class="jog-z-track"></div>
+          <button class="jbtn jbtn-z" id="jZn" onclick="jog('Z',-1)" title="-Z">↓</button>
+        </div>
+
+      </div>
+      <div class="kbd-row">
+        <span class="kbd">← →</span><span style="font-size:9px;color:var(--muted);">X</span>
+        <span class="kbd">↑ ↓</span><span style="font-size:9px;color:var(--muted);">Y</span>
+        <span class="kbd">PgUp</span><span class="kbd">PgDn</span><span style="font-size:9px;color:var(--muted);">Z</span>
+      </div>
+    </div>
+
+    <!-- CALIBRATION -->
+    <div class="mcard" id="calCard">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div class="mcard-title" style="margin:0;color:var(--warn);letter-spacing:0.18em;">Calibration</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="cal-badge" id="calBadge">UNCAL</span>
+          <button class="hz-btn" style="font-size:9px;padding:4px 10px;border-color:rgba(224,85,85,0.5);color:var(--danger);" onclick="clearAllCal()" title="Remove all calibration and unlock movement">Clear All</button>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--dim);line-height:1.6;margin-bottom:12px;">
+        Jog to each physical extreme, click <strong style="color:var(--text);">Set</strong> to commit that endpoint.
+        Use <strong style="color:var(--text);">📌 Note</strong> to log a candidate position without committing.
+        The midpoint of each axis becomes position&nbsp;0.
+      </div>
+
+      <!-- Live position readout -->
+      <div class="cal-pos-monitor" style="margin-bottom:14px;">
+        <div class="cal-pm-item"><span class="cal-pm-label">X</span><span class="cal-pm-val" id="calPmX">—</span></div>
+        <div class="cal-pm-item"><span class="cal-pm-label">Y</span><span class="cal-pm-val" id="calPmY">—</span></div>
+        <div class="cal-pm-item"><span class="cal-pm-label">Z</span><span class="cal-pm-val" id="calPmZ">—</span></div>
+      </div>
+
+      <!-- X axis -->
+      <div id="calRowX" style="margin-bottom:12px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span class="cal-axis-letter X" style="font-size:13px;font-weight:600;color:#ff6b6b;">X</span>
+          <div class="cal-dot" id="calDotX"></div>
+          <span class="cal-axis-range" id="calRangeX" style="flex:1;font-size:10px;color:var(--dim);">Not calibrated</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="display:flex;gap:4px;">
+              <button class="cal-endp-log-btn" style="flex:1;" onclick="logEndpointCandidate('X','NEG')">📌 Note Left</button>
+              <button class="cal-axis-btn" style="flex:1;" onclick="setEndpoint('X','NEG')">Set Left ←</button>
+            </div>
+            <span id="calEndpXNeg" style="font-size:9px;color:var(--dim);text-align:center;">Left: —</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="display:flex;gap:4px;">
+              <button class="cal-axis-btn" style="flex:1;" onclick="setEndpoint('X','POS')">→ Set Right</button>
+              <button class="cal-endp-log-btn" style="flex:1;" onclick="logEndpointCandidate('X','POS')">Note Right 📌</button>
+            </div>
+            <span id="calEndpXPos" style="font-size:9px;color:var(--dim);text-align:center;">Right: —</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Y axis -->
+      <div id="calRowY" style="margin-bottom:12px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span class="cal-axis-letter Y" style="font-size:13px;font-weight:600;color:#69db7c;">Y</span>
+          <div class="cal-dot" id="calDotY"></div>
+          <span class="cal-axis-range" id="calRangeY" style="flex:1;font-size:10px;color:var(--dim);">Not calibrated</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="display:flex;gap:4px;">
+              <button class="cal-endp-log-btn" style="flex:1;" onclick="logEndpointCandidate('Y','NEG')">📌 Note Back</button>
+              <button class="cal-axis-btn" style="flex:1;" onclick="setEndpoint('Y','NEG')">Set Back ←</button>
+            </div>
+            <span id="calEndpYNeg" style="font-size:9px;color:var(--dim);text-align:center;">Back: —</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="display:flex;gap:4px;">
+              <button class="cal-axis-btn" style="flex:1;" onclick="setEndpoint('Y','POS')">→ Set Front</button>
+              <button class="cal-endp-log-btn" style="flex:1;" onclick="logEndpointCandidate('Y','POS')">Note Front 📌</button>
+            </div>
+            <span id="calEndpYPos" style="font-size:9px;color:var(--dim);text-align:center;">Front: —</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Z axis -->
+      <div id="calRowZ" style="margin-bottom:14px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span class="cal-axis-letter Z" style="font-size:13px;font-weight:600;color:#74c0fc;">Z</span>
+          <div class="cal-dot" id="calDotZ"></div>
+          <span class="cal-axis-range" id="calRangeZ" style="flex:1;font-size:10px;color:var(--dim);">Not calibrated</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="display:flex;gap:4px;">
+              <button class="cal-endp-log-btn" style="flex:1;" onclick="logEndpointCandidate('Z','NEG')">📌 Note Down</button>
+              <button class="cal-axis-btn" style="flex:1;" onclick="setEndpoint('Z','NEG')">Set Down ↓</button>
+            </div>
+            <span id="calEndpZNeg" style="font-size:9px;color:var(--dim);text-align:center;">Down: —</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="display:flex;gap:4px;">
+              <button class="cal-axis-btn" style="flex:1;" onclick="setEndpoint('Z','POS')">↑ Set Up</button>
+              <button class="cal-endp-log-btn" style="flex:1;" onclick="logEndpointCandidate('Z','POS')">Note Up 📌</button>
+            </div>
+            <span id="calEndpZPos" style="font-size:9px;color:var(--dim);text-align:center;">Up: —</span>
+          </div>
+        </div>
+      </div>
+
+      <button class="go-btn" style="margin-top:0;border-color:rgba(224,85,85,0.4);color:var(--danger);" onclick="clearAllCal()">Reset All Calibration</button>
+      <div class="cal-eff-ranges" id="calEffRanges" style="margin-top:10px;"></div>
+    </div>
+
+    <!-- GOTO + RELATIVE -->
+    <div class="twoCol">
+      <div class="mcard">
+        <div class="mcard-title">Go to absolute</div>
+        <div class="axis-row"><span class="axis-lbl">X</span><input class="tinput" type="number" id="goX" placeholder="0" /></div>
+        <div class="axis-row"><span class="axis-lbl">Y</span><input class="tinput" type="number" id="goY" placeholder="0" /></div>
+        <div class="axis-row"><span class="axis-lbl">Z</span><input class="tinput" type="number" id="goZ" placeholder="0" /></div>
+        <button class="go-btn" onclick="gotoAbs()">Move →</button>
+      </div>
+
+      <div class="mcard">
+        <div class="mcard-title">Go to relative</div>
+        <div class="rel-row">
+          <select class="rel-sel" id="relAxis"><option>X</option><option>Y</option><option>Z</option></select>
+          <input class="tinput" type="number" id="relDist" placeholder="±steps" />
+        </div>
+        <button class="go-btn" onclick="gotoRel()">Move →</button>
+        <div style="margin-top:14px;">
+          <div class="mcard-title">Set position here</div>
+          <div class="rel-row" style="margin-bottom:0;">
+            <select class="rel-sel" id="zeroAxis"><option>X</option><option>Y</option><option>Z</option><option>ALL</option></select>
+            <button class="go-btn" style="margin-top:0;" onclick="zeroAxis()">Zero →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HOME -->
+    <div class="hzCard">
+      <div class="hzCard-title">Home (go to calibrated centre)</div>
+      <div class="hz-grid">
+        <button class="hz-btn" onclick="homeAxis('X')">Home X</button>
+        <button class="hz-btn" onclick="homeAxis('Y')">Home Y</button>
+        <button class="hz-btn" onclick="homeAxis('Z')">Home Z</button>
+        <button class="hz-btn warn" onclick="send('H')">Set home</button>
+      </div>
+    </div>
+
+    <!-- Z FOCUS -->
+    <div class="mcard">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;">
+        <div class="mcard-title" style="margin:0;">Z Focus</div>
+        <span id="focusPosLabel" style="font-size:10px;color:var(--muted);">not set</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button class="go-btn" style="margin-top:0;" onclick="setFocus()">Set focus here</button>
+        <button class="go-btn" style="margin-top:0;" id="goFocusBtn" onclick="goFocus()" disabled>Go to focus</button>
+      </div>
+
+      <div class="af-section">
+        <div class="mcard-title" style="margin-bottom:8px;">Autofocus (Z sweep)</div>
+        <div class="af-row">
+          <label>RANGE ±</label>
+          <input class="tinput" type="number" id="afRange" value="500" min="10" style="width:72px;" />
+          <label>STEP</label>
+          <input class="tinput" type="number" id="afStep" value="50" min="1" style="width:62px;" />
+          <label style="color:var(--dim);">steps</label>
+        </div>
+        <div class="af-row" style="margin-bottom:4px;">
+          <label>SETTLE</label>
+          <input class="tinput" type="number" id="afSettle" value="300" min="50" style="width:62px;" />
+          <label style="color:var(--dim);">ms after each move</label>
+        </div>
+        <div class="af-progress-wrap" id="afProgressWrap">
+          <div class="af-progress-bar" id="afProgressBar"></div>
+        </div>
+        <div class="af-status" id="afStatus"></div>
+        <button class="go-btn" style="margin-top:6px;" id="afRunBtn" onclick="runAutofocus()">Run Autofocus</button>
+        <button class="af-cancel-btn" id="afCancelBtn" onclick="cancelAutofocus()">Cancel</button>
+      </div>
+    </div>
+
+    </div><!-- /center-scroll -->
+  </div><!-- /center -->
+
+  <!-- RIGHT PANEL -->
+  <div class="right">
+    <div class="section-hdr">Serial log</div>
+    <div class="log-wrap">
+      <div class="log" id="log"></div>
+    </div>
+    <div class="raw-row">
+      <input class="tinput" type="text" id="rawCmd" placeholder="raw command…" style="flex:1;" onkeydown="if(event.key==='Enter')sendRaw()" />
+      <button class="raw-send" onclick="sendRaw()">Send</button>
+      <button class="raw-send" onclick="clearLog()">Clr</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ════════════════════════════════════════════════
+     CALIBRATION MODAL
+════════════════════════════════════════════════ -->
+<!-- ════════════════════════════════════════════════
+     PROJECTOR MODAL
+════════════════════════════════════════════════ -->
+<div class="proj-overlay" id="projOverlay">
+  <div class="proj-modal">
+
+    <div class="proj-header">
+      <span class="proj-title">Projector</span>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+        <div class="proj-status-dot" id="projDot"></div>
+        <span style="font-size:10px;color:var(--muted);" id="projStatusText">not projecting</span>
+        <button class="cal-close-btn" onclick="closeProjModal()">✕</button>
+      </div>
+    </div>
+
+    <div class="proj-body">
+
+      <!-- Image selection -->
+      <div>
+        <div class="proj-section-label">Image</div>
+        <div class="proj-dropzone" id="projDropzone">
+          <input type="file" id="projFileInput" accept="image/*" style="display:none;" onchange="onProjFileChange(event)" />
+          <div class="proj-dropzone-icon">⊞</div>
+          <div>Click to browse or drop image here</div>
+          <div style="font-size:10px;color:var(--dim);">PNG · JPG · TIFF · BMP · SVG · GIF</div>
+        </div>
+        <div class="proj-preview-wrap" id="projPreviewWrap" style="display:none;">
+          <img class="proj-preview-img" id="projPreviewImg" src="" alt="" />
+          <div class="proj-preview-meta">
+            <span style="font-size:10px;color:var(--muted);" id="projFileName"></span>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span style="font-size:10px;color:var(--dim);" id="projFileSize"></span>
+              <button class="cam-apply-btn" onclick="resetProjImage()">Change</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Display selection -->
+      <hr class="cal-section-sep" />
+      <div>
+        <div class="proj-section-label">Display</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+          <button class="cam-apply-btn" onclick="detectProjScreens()" id="projDetectBtn">Detect Screens</button>
+          <span style="font-size:10px;color:var(--dim);" id="projScreenHint">Click to enumerate connected displays</span>
+        </div>
+        <div class="proj-screen-list" id="projScreenList"></div>
+      </div>
+
+      <!-- Controls -->
+      <hr class="cal-section-sep" />
+      <div style="display:flex;gap:8px;">
+        <button class="cal-all-btn" id="projBtn" onclick="startProjection()">Project Image →</button>
+        <button class="cal-axis-btn" id="projStopBtn" onclick="stopProjection()" style="display:none;padding:8px 16px;border-color:var(--danger);color:var(--danger);">Stop</button>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
+        <span style="font-size:9px;color:var(--muted);letter-spacing:0.12em;">FIT</span>
+        <button class="hz-btn" style="flex:1;font-size:9px;" onclick="setProjFit('contain')">Contain</button>
+        <button class="hz-btn" style="flex:1;font-size:9px;" onclick="setProjFit('cover')">Cover</button>
+        <button class="hz-btn" style="flex:1;font-size:9px;" onclick="setProjFit('fill')">Stretch</button>
+      </div>
+      <div class="proj-tip" style="margin-top:10px;">
+        <strong>projector.html</strong> opens on the selected display as an independent window —
+        your main screen stays free. Click inside it or press <strong>F</strong> to fullscreen,
+        <strong>C</strong> to cycle fit modes, <strong>Esc</strong> to exit fullscreen.
+        Loading a new image sends it instantly without reopening the window.
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<script>
+// ── State ──────────────────────────────────────────────────
+let port = null, writer = null, reader = null;
+let connected = false, motorsOn = true;
+let step = 100;
+let pos = { X: 0, Y: 0, Z: 0 };
+let limits = { Xmin:0, Xmax:0, Ymin:0, Ymax:0, Zmin:0, Zmax:0 };
+let speedDelay = 800;
+
+// ── Focus state ────────────────────────────────────────────
+let focusZ   = null;
+let focusSet = false;
+
+// ── Calibration state ──────────────────────────────────────
+let calRanges = { X: null, Y: null, Z: null }; // { min, max } per calibrated axis
+let axisCalibrated = { X: false, Y: false, Z: false };
+let isCalibrated = false;
+// Pending endpoints (set before both sides are marked)
+let calEndpoints = {
+  X: { pos: null, neg: null },
+  Y: { pos: null, neg: null },
+  Z: { pos: null, neg: null }
+};
+
+// ── Connection ─────────────────────────────────────────────
+async function toggleConnect() {
+  if (connected) { await disconnect(); return; }
+  if (!navigator.serial) {
+    log('Web Serial API not supported. Use Chrome or Edge.', 'err');
+    return;
+  }
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    connected = true;
+    setStatus('connected', true);
+    log('Port opened @ 115200', 'sys');
+    startReading();
+  } catch(e) {
+    log('Connect failed: ' + e.message, 'err');
+  }
+}
+
+async function disconnect() {
+  connected = false;                       // stop auto-restart loop first
+  try { await reader?.cancel(); } catch(_) {}
+  try { writer?.releaseLock(); } catch(_) {}
+  try { await port?.close(); } catch(_) {}
+  port = writer = reader = null;
+  setStatus('disconnected', false);
+  log('Disconnected.', 'sys');
+}
+
+function setStatus(label, on) {
+  document.getElementById('dot').className = 'status-dot' + (on ? ' on' : '');
+  document.getElementById('statusText').textContent = label;
+  const btn = document.getElementById('connBtn');
+  btn.textContent = on ? 'Disconnect' : 'Connect';
+  btn.className = 'conn-btn' + (on ? ' active' : '');
+  document.getElementById('undoBtn').disabled = !on;
+}
+
+// ── Serial Read ─────────────────────────────────────────────
+async function startReading() {
+  const dec = new TextDecoder();
+  let buf = '';
+  // Outer loop: auto-restart on error while still connected
+  while (connected) {
+    try {
+      reader = port.readable.getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop();
+          for (const line of lines) {
+            const t = line.trim();
+            if (!t) continue;
+            const isCal = t.startsWith('CAL ') || t === 'CALIBRATED' || t === 'UNCALIBRATED';
+            log(t, isCal ? 'cal' : 'rx');
+            parseLine(t);
+          }
+        }
+      } finally {
+        try { reader.releaseLock(); } catch(_) {}
+        reader = null;
+      }
+    } catch(e) {
+      if (!connected) break;
+      log('Serial read error: ' + e.message + ' — retrying…', 'err');
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+}
+
+function parseLine(line) {
+  // DONE — motion complete
+  if (line === 'DONE') {
+    if (_pendingDone) { _pendingDone(); _pendingDone = null; }
+    return;
+  }
+
+  // CAL MANUAL OK
+  if (line === 'CAL MANUAL OK') {
+    isCalibrated = true;
+    updateCalBadge();
+    autoSaveState();
+    send('L'); send('P');   // refresh limits and position
+    return;
+  }
+
+  // POS x y z
+  if (line.startsWith('POS ')) {
+    const parts = line.substring(4).trim().split(/\s+/);
+    if (parts.length >= 3) {
+      pos.X = parseInt(parts[0]);
+      pos.Y = parseInt(parts[1]);
+      pos.Z = parseInt(parts[2]);
+      updatePosUI();
+      updateCalPosMonitor();
+    }
+    return;
+  }
+
+  // LIMITS xmin xmax ymin ymax zmin zmax
+  if (line.startsWith('LIMITS ')) {
+    const p = line.substring(7).trim().split(/\s+/);
+    if (p.length >= 6) {
+      ['X','Y','Z'].forEach((a, i) => {
+        if (axisCalibrated[a]) {
+          limits[a+'min'] = +p[i*2];
+          limits[a+'max'] = +p[i*2+1];
+        }
+      });
+      updateLimitsUI();
+    }
+    return;
+  }
+
+  // CAL INFO rawXmin rawXmax rawYmin rawYmax rawZmin rawZmax
+  if (line.startsWith('CAL INFO ')) {
+    const p = line.substring(9).trim().split(/\s+/);
+    if (p.length >= 6) {
+      ['X','Y','Z'].forEach((a, i) => {
+        if (axisCalibrated[a]) {
+          calRanges[a] = { min: +p[i*2], max: +p[i*2+1] };
+          limits[a+'min'] = +p[i*2];
+          limits[a+'max'] = +p[i*2+1];
+        }
+      });
+      updateCalUI();
+      updateCalBadge();
+      updateLimitsUI();
+    }
+    return;
+  }
+
+  // CAL CANCELLED
+  if (line === 'CAL CANCELLED') { return; }
+
+  // CAL CLEARED
+  if (line === 'CAL CLEARED') {
+    axisCalibrated = { X: false, Y: false, Z: false };
+    calRanges = { X: null, Y: null, Z: null };
+    calEndpoints = { X:{pos:null,neg:null}, Y:{pos:null,neg:null}, Z:{pos:null,neg:null} };
+    isCalibrated = false;
+    updateCalUI(); updateCalBadge(); updateLimitsUI();
+    return;
+  }
+
+  // CAL CLEAR X/Y/Z
+  if (line.startsWith('CAL CLEAR ') && line.length === 11) {
+    const ax = line.charAt(10);
+    if ('XYZ'.includes(ax)) {
+      axisCalibrated[ax] = false;
+      calRanges[ax] = null;
+      calEndpoints[ax] = { pos: null, neg: null };
+      isCalibrated = false;
+      updateCalUI(); updateCalBadge(); updateLimitsUI();
+    }
+    return;
+  }
+
+  // CAL ENDP X POS MARKED n  /  CAL ENDP X NEG MARKED n
+  if (line.startsWith('CAL ENDP ')) {
+    const parts = line.substring(9).trim().split(/\s+/);
+    // parts: [axis, POS|NEG, MARKED, value]
+    if (parts.length >= 4 && parts[2] === 'MARKED') {
+      const ax = parts[0], side = parts[1].toLowerCase(), val = parseInt(parts[3]);
+      if ('XYZ'.includes(ax) && !isNaN(val)) {
+        calEndpoints[ax][side] = val;
+        updateCalUI();
+      }
+    }
+    return;
+  }
+
+  // CALIBRATED / UNCALIBRATED
+  if (line === 'CALIBRATED')   { isCalibrated = true;  updateCalBadge(); autoSaveState(); return; }
+  if (line === 'UNCALIBRATED') { isCalibrated = false; updateCalBadge(); return; }
+
+  // FOCUS n  or  FOCUS UNSET
+  if (line.startsWith('FOCUS ')) {
+    const val = line.substring(6).trim();
+    if (val === 'UNSET') {
+      focusSet = false; focusZ = null;
+    } else {
+      focusSet = true; focusZ = parseInt(val);
+    }
+    updateFocusUI();
+    return;
+  }
+
+  // UNDONE
+  if (line === 'UNDONE') { log('Position reverted (undo).', 'undo'); return; }
+
+  // CAL X DONE min max  (axis calibration completed)
+  if (line.startsWith('CAL ') && line.length > 6) {
+    const parts = line.substring(4).trim().split(/\s+/);
+    if (parts.length < 2) return;
+    const ax  = parts[0];
+    const evt = parts.slice(1).join(' ');
+
+    if (evt.startsWith('DONE ') && 'XYZ'.includes(ax)) {
+      const nums = evt.substring(5).split(/\s+/);
+      calRanges[ax] = { min: +nums[0], max: +nums[1] };
+      axisCalibrated[ax] = true;
+      limits[ax+'min'] = +nums[0];
+      limits[ax+'max'] = +nums[1];
+      // Reset pending endpoint tracking for this axis (calibration applied)
+      calEndpoints[ax] = { pos: null, neg: null };
+      updateCalUI();
+      updateCalBadge();
+      updateLimitsUI();
+      autoSaveState();
+      log(`${ax} calibrated: ${calRanges[ax].min} → ${calRanges[ax].max}  (${calRanges[ax].max - calRanges[ax].min} steps)`, 'sys');
+    }
+  }
+}
+
+// ── Send ───────────────────────────────────────────────────
+async function send(cmd) {
+  if (!writer) { log('Not connected', 'err'); return; }
+  const enc = new TextEncoder();
+  await writer.write(enc.encode(cmd + '\n'));
+  log(cmd, 'tx');
+}
+
+// ── Jog ────────────────────────────────────────────────────
+function jog(axis, dir, flashId) {
+  const delta = step * dir;
+  send(`J ${axis} ${delta}`);
+  if (axisCalibrated[axis]) {
+    pos[axis] = Math.max(limits[axis+'min'], Math.min(limits[axis+'max'], pos[axis] + delta));
+  } else {
+    pos[axis] += delta;
+  }
+  updatePosUI();
+  // flashId is passed explicitly when physical button order differs from step sign
+  if (flashId) flash(flashId);
+  else flash('j' + axis + (dir > 0 ? 'p' : 'n'));
+}
+
+function flash(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 150);
+}
+
+// ── Goto ───────────────────────────────────────────────────
+function gotoAbs() {
+  const x = document.getElementById('goX').value !== '' ? +document.getElementById('goX').value : pos.X;
+  const y = document.getElementById('goY').value !== '' ? +document.getElementById('goY').value : pos.Y;
+  const z = document.getElementById('goZ').value !== '' ? +document.getElementById('goZ').value : pos.Z;
+  send(`A ${Math.round(x)} ${Math.round(y)} ${Math.round(z)}`);
+}
+
+function gotoRel() {
+  const axis = document.getElementById('relAxis').value;
+  const dist = Math.round(+document.getElementById('relDist').value || 0);
+  send(`J ${axis} ${dist}`);
+}
+
+function zeroAxis() {
+  const a = document.getElementById('zeroAxis').value;
+  send('Z ' + a);
+}
+
+// Go to 0 on one axis, keep others (0 = calibrated centre after calibration)
+function homeAxis(axis) {
+  const x = axis === 'X' ? 0 : pos.X;
+  const y = axis === 'Y' ? 0 : pos.Y;
+  const z = axis === 'Z' ? 0 : pos.Z;
+  send(`A ${x} ${y} ${z}`);
+}
+
+// ── Step ───────────────────────────────────────────────────
+function setStep(v, btn) {
+  step = v;
+  document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('on'));
+  if (btn) btn.classList.add('on');
+  document.getElementById('customStep').value = '';
+}
+
+function setStepCustom(v) {
+  if (v > 0) {
+    step = v;
+    document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('on'));
+  }
+}
+
+// ── Speed ──────────────────────────────────────────────────
+function setSpeed(v) {
+  speedDelay = v;
+  document.getElementById('speedVal').textContent = v + ' µs';
+  send('S ' + v);
+}
+
+// ── Motors ─────────────────────────────────────────────────
+function toggleMotors() {
+  motorsOn = !motorsOn;
+  document.getElementById('motorTrack').className = 'toggle-track' + (motorsOn ? ' on' : '');
+  document.getElementById('motorLabel').textContent = motorsOn ? 'Motors enabled' : 'Motors disabled';
+  send(motorsOn ? 'E' : 'D');
+}
+
+// ── UI Updates ─────────────────────────────────────────────
+function updatePosUI() {
+  ['X','Y','Z'].forEach(a => {
+    document.getElementById('pos'+a).textContent = pos[a];
+    if (axisCalibrated[a]) {
+      const range = limits[a+'max'] - limits[a+'min'] || 1;
+      const pct = ((pos[a] - limits[a+'min']) / range * 100).toFixed(1);
+      document.getElementById('bar'+a).style.width = Math.max(0, Math.min(100, pct)) + '%';
+    } else {
+      document.getElementById('bar'+a).style.width = '0%';
+    }
+  });
+}
+
+function updateLimitsUI() {
+  ['X','Y','Z'].forEach(a => {
+    const el = document.getElementById('lim'+a);
+    if (axisCalibrated[a]) {
+      el.textContent = limits[a+'min'] + ' → ' + limits[a+'max'];
+    } else {
+      el.textContent = '—';
+    }
+  });
+  updatePosUI();
+  updateCalEffRanges();
+}
+
+function updateCalBadge() {
+  const b = document.getElementById('calBadge');
+  const anyDone = axisCalibrated.X || axisCalibrated.Y || axisCalibrated.Z;
+  if (isCalibrated) {
+    b.textContent = 'CALIBRATED'; b.className = 'cal-badge ok';
+  } else if (anyDone) {
+    b.textContent = 'PARTIAL'; b.className = 'cal-badge';
+    b.style.color = 'var(--warn)'; b.style.borderColor = 'rgba(240,165,0,0.4)';
+    return;
+  } else {
+    b.textContent = 'UNCAL'; b.className = 'cal-badge';
+  }
+  b.style.color = ''; b.style.borderColor = '';
+}
+
+// ── Undo ───────────────────────────────────────────────────
+function undoLast() {
+  send('UNDO');
+}
+
+// ── Focus ──────────────────────────────────────────────────
+function setFocus() {
+  if (!connected) return;
+  send('FOCUS SET');
+  autoSaveState();
+}
+
+function goFocus() {
+  if (!connected || !focusSet) return;
+  send('FOCUS GO');
+}
+
+function updateFocusUI() {
+  const label = document.getElementById('focusPosLabel');
+  const btn   = document.getElementById('goFocusBtn');
+  if (focusSet && focusZ !== null) {
+    label.textContent = 'Z = ' + focusZ;
+    label.style.color = 'var(--accent)';
+    btn.disabled = false;
+  } else {
+    label.textContent = 'not set';
+    label.style.color = 'var(--muted)';
+    btn.disabled = true;
+  }
+}
+
+// ── Calibration UI ─────────────────────────────────────────
+// Mark current position as an endpoint for the given axis and side ('POS' or 'NEG').
+function setEndpoint(axis, side) {
+  if (!connected) { log('Connect first', 'err'); return; }
+  send(`CAL ENDP ${axis} ${side}`);
+}
+
+// Log current position as a named endpoint candidate without committing to calibration.
+function logEndpointCandidate(axis, side) {
+  const lbls = ENDP_LABELS[axis];
+  const sideName = side === 'NEG' ? lbls.neg : lbls.pos;
+  const val = pos[axis];
+  log(`[NOTE] ${axis} ${sideName} endpoint candidate: ${axis}=${val}  (X=${pos.X} Y=${pos.Y} Z=${pos.Z})`, 'cal');
+}
+
+function clearAxisCal(axis) {
+  if (!connected) { log('Connect first', 'err'); return; }
+  send(`CAL CLEAR ${axis}`);
+}
+
+function clearAllCal() {
+  if (!connected) { log('Connect first', 'err'); return; }
+  send('CAL CLEAR');
+}
+
+function updateCalPosMonitor() {
+  document.getElementById('calPmX').textContent = pos.X;
+  document.getElementById('calPmY').textContent = pos.Y;
+  document.getElementById('calPmZ').textContent = pos.Z;
+}
+
+function updateCalEffRanges() {
+  const el = document.getElementById('calEffRanges');
+  const anyDone = axisCalibrated.X || axisCalibrated.Y || axisCalibrated.Z;
+  if (!anyDone) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div style="font-size:9px;color:var(--muted);margin-bottom:4px;letter-spacing:0.1em;margin-top:4px;">CALIBRATED RANGES</div>' +
+    ['X','Y','Z'].map(a => {
+      if (!axisCalibrated[a]) return `<div class="cal-eff-row"><span class="cal-eff-axis">${a}</span><span class="cal-eff-val" style="color:var(--dim)">not calibrated</span></div>`;
+      const min = limits[a+'min'], max = limits[a+'max'];
+      return `<div class="cal-eff-row">
+        <span class="cal-eff-axis">${a}</span>
+        <span class="cal-eff-val">${min} → ${max} &nbsp;(${max - min} steps)</span>
+      </div>`;
+    }).join('');
+}
+
+// Endpoint label helpers per axis
+const ENDP_LABELS = {
+  X: { neg: 'Left', pos: 'Right' },
+  Y: { neg: 'Back', pos: 'Front' },
+  Z: { neg: 'Down', pos: 'Up'   }
+};
+
+function updateCalUI() {
+  updateCalPosMonitor();
+
+  ['X','Y','Z'].forEach(a => {
+    const dot      = document.getElementById('calDot' + a);
+    const rangeEl  = document.getElementById('calRange' + a);
+    const negLabel = document.getElementById('calEndp' + a + 'Neg');
+    const posLabel = document.getElementById('calEndp' + a + 'Pos');
+    const lbls     = ENDP_LABELS[a];
+
+    // Pending endpoint display (before both sides confirmed)
+    const ep = calEndpoints[a];
+    negLabel.textContent = ep.neg !== null
+      ? `${lbls.neg}: ${ep.neg}`
+      : `${lbls.neg}: —`;
+    posLabel.textContent = ep.pos !== null
+      ? `${lbls.pos}: ${ep.pos}`
+      : `${lbls.pos}: —`;
+
+    if (axisCalibrated[a] && calRanges[a]) {
+      const r = calRanges[a];
+      dot.className = 'cal-dot ok';
+      rangeEl.textContent = `${r.min} → ${r.max}  (${r.max - r.min} steps)`;
+    } else {
+      dot.className = 'cal-dot';
+      rangeEl.textContent = 'Not calibrated';
+    }
+  });
+
+  updateCalEffRanges();
+}
+
+// ── Log ────────────────────────────────────────────────────
+function log(msg, type='sys') {
+  const el = document.getElementById('log');
+  const d = new Date();
+  const ts = d.getHours().toString().padStart(2,'0') + ':' +
+             d.getMinutes().toString().padStart(2,'0') + ':' +
+             d.getSeconds().toString().padStart(2,'0');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + type;
+  line.innerHTML = `<span class="log-ts">${ts}</span><span class="log-body">${msg}</span>`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+
+function sendRaw() {
+  const inp = document.getElementById('rawCmd');
+  if (inp.value.trim()) { send(inp.value.trim()); inp.value = ''; }
+}
+
+// ── Keyboard ───────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
+  if (afRunning) return;
+  // ArrowLeft/Right are swapped for X to match physical stage orientation
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); jog('X', 1,'jXn'); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); jog('X',-1,'jXp'); }
+  if (e.key === 'ArrowUp')    { e.preventDefault(); jog('Y', 1); }
+  if (e.key === 'ArrowDown')  { e.preventDefault(); jog('Y',-1); }
+  if (e.key === 'PageUp')     { e.preventDefault(); jog('Z', 1); }
+  if (e.key === 'PageDown')   { e.preventDefault(); jog('Z',-1); }
+});
+
+// ── Projector ───────────────────────────────────────────────
+let projWin        = null;
+let projBlobUrl    = null;
+let projScreenDets = null;
+let projSelScreen  = null;
+let projPollTimer  = null;
+
+// Listen for messages from projector.html (ready / pong)
+window.addEventListener('message', e => {
+  if (!e.data || !e.data.type) return;
+  if ((e.data.type === 'ready' || e.data.type === 'pong') && projBlobUrl && projWin && !projWin.closed) {
+    projWin.postMessage({ type: 'image', src: projBlobUrl }, '*');
+  }
+});
+
+function openProjModal()  { document.getElementById('projOverlay').classList.add('open'); }
+function closeProjModal() { document.getElementById('projOverlay').classList.remove('open'); }
+
+function onProjFileChange(e) { if (e.target.files[0]) loadProjFile(e.target.files[0]); }
+
+function resetProjImage() {
+  if (projBlobUrl) { URL.revokeObjectURL(projBlobUrl); projBlobUrl = null; }
+  document.getElementById('projPreviewWrap').style.display = 'none';
+  document.getElementById('projDropzone').style.display = '';
+  document.getElementById('projFileInput').value = '';
+}
+
+function loadProjFile(file) {
+  if (projBlobUrl) URL.revokeObjectURL(projBlobUrl);
+  projBlobUrl = URL.createObjectURL(file);
+  document.getElementById('projPreviewImg').src = projBlobUrl;
+  document.getElementById('projFileName').textContent = file.name;
+  document.getElementById('projFileSize').textContent =
+    file.size > 1048576 ? (file.size/1048576).toFixed(1)+' MB' : Math.round(file.size/1024)+' KB';
+  document.getElementById('projPreviewWrap').style.display = '';
+  document.getElementById('projDropzone').style.display = 'none';
+  // Push to projector window immediately if already open
+  if (projWin && !projWin.closed) projWin.postMessage({ type: 'image', src: projBlobUrl }, '*');
+  log('Projector: image loaded' + (projWin && !projWin.closed ? ' — sent to projector' : ''), 'sys');
+}
+
+function setProjFit(mode) {
+  if (projWin && !projWin.closed) projWin.postMessage({ type: 'fit', value: mode }, '*');
+}
+
+function _initProjDrop() {
+  const dz = document.getElementById('projDropzone');
+  dz.addEventListener('click', () => document.getElementById('projFileInput').click());
+  dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('dz-hover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dz-hover'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('dz-hover');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) loadProjFile(f);
+  });
+}
+
+async function detectProjScreens() {
+  if (!('getScreenDetails' in window)) {
+    document.getElementById('projScreenHint').textContent =
+      'Window Management API not supported — drag the window to your projector manually';
+    return;
+  }
+  try {
+    projScreenDets = await window.getScreenDetails();
+    projSelScreen = projScreenDets.screens.find(s => !s.isPrimary) || projScreenDets.screens[0];
+    _renderProjScreenList();
+    projScreenDets.addEventListener('screenschange', _renderProjScreenList);
+    document.getElementById('projScreenHint').textContent =
+      projScreenDets.screens.length + ' display(s) detected';
+  } catch(_) {
+    document.getElementById('projScreenHint').textContent =
+      'Permission denied — drag the window to your projector manually';
+  }
+}
+
+function _renderProjScreenList() {
+  const screens = projScreenDets ? projScreenDets.screens : [];
+  document.getElementById('projScreenList').innerHTML = screens.map((s, i) => {
+    const ext = !s.isPrimary, sel = projSelScreen === s;
+    const name = s.isPrimary ? 'Primary (this monitor)' : `Screen ${i+1} — HDMI / projector`;
+    return `<div class="proj-screen-item${sel?' selected':''}" onclick="_selectProjScreen(${i})">
+      <div class="proj-screen-dot${ext?' ext':''}"></div>
+      <span class="proj-screen-name">${name}</span>
+      <span class="proj-screen-res">${s.width}×${s.height}</span>
+    </div>`;
+  }).join('');
+}
+
+function _selectProjScreen(idx) {
+  projSelScreen = projScreenDets.screens[idx];
+  _renderProjScreenList();
+}
+
+function startProjection() {
+  if (!projBlobUrl) { log('Projector: load an image first', 'err'); return; }
+
+  // If already open just resend the image
+  if (projWin && !projWin.closed) {
+    projWin.postMessage({ type: 'image', src: projBlobUrl }, '*');
+    projWin.focus();
+    return;
+  }
+
+  let L = 0, T = 0, W = screen.availWidth, H = screen.availHeight;
+  if (projSelScreen) {
+    L = projSelScreen.availLeft   ?? projSelScreen.left   ?? 0;
+    T = projSelScreen.availTop    ?? projSelScreen.top    ?? 0;
+    W = projSelScreen.availWidth  ?? projSelScreen.width  ?? screen.availWidth;
+    H = projSelScreen.availHeight ?? projSelScreen.height ?? screen.availHeight;
+  }
+
+  projWin = window.open('projector.html', 'xyzProjector',
+    `toolbar=no,location=no,menubar=no,status=no,scrollbars=no,` +
+    `left=${L},top=${T},width=${W},height=${H}`);
+
+  if (!projWin) { log('Projector: popup blocked — allow popups for this page', 'err'); return; }
+
+  // projector.html postMessages 'ready' on load → window.onmessage resends the image
+  _setProjStatus(true);
+  log('Projector: window opened', 'sys');
+
+  clearInterval(projPollTimer);
+  projPollTimer = setInterval(() => {
+    if (projWin && projWin.closed) {
+      clearInterval(projPollTimer);
+      projWin = null;
+      _setProjStatus(false);
+    }
+  }, 800);
+}
+
+function stopProjection() {
+  clearInterval(projPollTimer);
+  if (projWin && !projWin.closed) projWin.postMessage({ type: 'clear' }, '*');
+  if (projWin && !projWin.closed) projWin.close();
+  projWin = null;
+  _setProjStatus(false);
+  log('Projector: stopped', 'sys');
+}
+
+function _setProjStatus(active) {
+  document.getElementById('projDot').className = 'proj-status-dot' + (active ? ' on' : '');
+  document.getElementById('projStatusText').textContent = active ? 'projecting' : 'not projecting';
+  document.getElementById('projBtn').textContent = active ? 'Send Image Again →' : 'Project Image →';
+  document.getElementById('projStopBtn').style.display = active ? '' : 'none';
+}
+
+// ── DONE promise ───────────────────────────────────────────
+let _pendingDone = null;
+
+function waitForDone(timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    // Cancel any previously pending waiter
+    if (_pendingDone) { _pendingDone(); _pendingDone = null; }
+    const timer = setTimeout(() => {
+      _pendingDone = null;
+      reject(new Error('Timeout waiting for DONE'));
+    }, timeoutMs);
+    _pendingDone = () => { clearTimeout(timer); resolve(); };
+  });
+}
+
+// ── State persistence ───────────────────────────────────────
+function buildStateObject() {
+  return {
+    version: 2,
+    saved: new Date().toISOString(),
+    calibration: { isCalibrated, axisCalibrated, calRanges },
+    position: { ...pos },
+    focusZ, focusSet,
+    speedDelay,
+  };
+}
+
+function autoSaveState() {
+  try {
+    localStorage.setItem('xyzStageState', JSON.stringify(buildStateObject()));
+    const el = document.getElementById('stateInfo');
+    if (el) el.textContent = 'Auto-saved ' + new Date().toLocaleTimeString();
+  } catch(_) {}
+}
+
+function applyStateObject(state, fromFile) {
+  if (!state || (state.version !== 1 && state.version !== 2)) { log('State: unknown format', 'err'); return; }
+  const cal = state.calibration || {};
+  if (cal.calRanges) {
+    calRanges = { X: cal.calRanges.X || null, Y: cal.calRanges.Y || null, Z: cal.calRanges.Z || null };
+  }
+  if (cal.axisCalibrated) {
+    axisCalibrated = { X: !!cal.axisCalibrated.X, Y: !!cal.axisCalibrated.Y, Z: !!cal.axisCalibrated.Z };
+  } else if (cal.isCalibrated) {
+    // v1 state: if fully calibrated, mark all axes
+    axisCalibrated = { X: true, Y: true, Z: true };
+  }
+  if (cal.isCalibrated !== undefined) isCalibrated = cal.isCalibrated;
+  // Restore limits from saved calRanges
+  ['X','Y','Z'].forEach(a => {
+    if (axisCalibrated[a] && calRanges[a]) {
+      limits[a+'min'] = calRanges[a].min;
+      limits[a+'max'] = calRanges[a].max;
+    }
+  });
+  if (state.focusZ !== undefined) { focusZ = state.focusZ; focusSet = !!state.focusSet; updateFocusUI(); }
+  if (state.speedDelay) {
+    speedDelay = state.speedDelay;
+    document.getElementById('speedSlider').value = speedDelay;
+    document.getElementById('speedVal').textContent = speedDelay + ' µs';
+  }
+  updateCalBadge();
+  updateCalUI();
+  updateLimitsUI();
+  // If connected and file has full calibration, push it to firmware via CAL MANUAL
+  if (fromFile && connected && isCalibrated && calRanges.X && calRanges.Y && calRanges.Z) {
+    const { X: rx, Y: ry, Z: rz } = calRanges;
+    const p = state.position || pos;
+    send(`CAL MANUAL ${rx.min} ${rx.max} ${ry.min} ${ry.max} ${rz.min} ${rz.max} ${p.X} ${p.Y} ${p.Z}`);
+    log('Calibration restored from file → sent CAL MANUAL', 'sys');
+  }
+  log('State loaded' + (fromFile ? ' from file' : ' from last session') + '.', 'sys');
+  if (fromFile) autoSaveState();
+}
+
+function loadStateFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem('xyzStageState');
+    if (!raw) return;
+    applyStateObject(JSON.parse(raw), false);
+  } catch(_) {}
+}
+
+async function saveStateToFile() {
+  const json = JSON.stringify(buildStateObject(), null, 2);
+  try {
+    if (window.showSaveFilePicker) {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: 'stage_state.txt',
+        types: [{ description: 'Text', accept: { 'text/plain': ['.txt', '.json'] } }],
+      });
+      const w = await handle.createWritable();
+      await w.write(json); await w.close();
+    } else {
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob([json], { type: 'text/plain' })),
+        download: 'stage_state.txt',
+      });
+      a.click(); URL.revokeObjectURL(a.href);
+    }
+    log('State exported to file.', 'sys');
+  } catch(e) { if (e.name !== 'AbortError') log('Export failed: ' + e.message, 'err'); }
+}
+
+async function loadStateFromFile() {
+  try {
+    let text;
+    if (window.showOpenFilePicker) {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: 'Text/JSON', accept: { 'text/plain': ['.txt', '.json'] } }],
+      });
+      text = await (await handle.getFile()).text();
+    } else {
+      text = await new Promise((res, rej) => {
+        const inp = Object.assign(document.createElement('input'), { type: 'file', accept: '.txt,.json' });
+        inp.onchange = async e => { const f = e.target.files[0]; f ? res(await f.text()) : rej(); };
+        inp.click();
+      });
+    }
+    applyStateObject(JSON.parse(text), true);
+  } catch(e) { if (e.name !== 'AbortError') log('Import failed: ' + e.message, 'err'); }
+}
+
+// ── Autofocus ───────────────────────────────────────────────
+let afRunning = false;
+let afCancelFlag = false;
+
+function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function getFocusScore() {
+  try {
+    const r = await fetch(CAM_URL + '/focus_score', { signal: AbortSignal.timeout(2000) });
+    if (!r.ok) return 0;
+    return (await r.json()).score || 0;
+  } catch(_) { return 0; }
+}
+
+function setAfUI(running, done, total, statusText) {
+  document.getElementById('afRunBtn').disabled = running;
+  document.getElementById('afCancelBtn').style.display = running ? '' : 'none';
+  const wrap = document.getElementById('afProgressWrap');
+  const bar  = document.getElementById('afProgressBar');
+  const stat = document.getElementById('afStatus');
+  wrap.style.display = running ? '' : 'none';
+  if (running) {
+    bar.style.width = ((done / total) * 100).toFixed(1) + '%';
+    stat.style.display = '';
+    stat.textContent = statusText || `${done} / ${total}`;
+  } else {
+    stat.style.display = 'none';
+  }
+}
+
+async function runAutofocus() {
+  if (afRunning) return;
+  if (!connected)    { log('Autofocus: stage not connected', 'err'); return; }
+  if (!cameraActive) { log('Autofocus: camera not connected', 'err'); return; }
+
+  const range   = Math.max(1,  parseInt(document.getElementById('afRange').value)  || 500);
+  const stepSz  = Math.max(1,  parseInt(document.getElementById('afStep').value)   || 50);
+  const settle  = Math.max(50, parseInt(document.getElementById('afSettle').value) || 300);
+
+  // Build Z sweep clamped to effective limits
+  const zSteps = [];
+  for (let z = pos.Z - range; z <= pos.Z + range; z += stepSz) {
+    const cz = Math.max(limits.Zmin, Math.min(limits.Zmax, z));
+    if (!zSteps.length || cz !== zSteps[zSteps.length - 1]) zSteps.push(cz);
+  }
+  if (zSteps.length === 0) { log('Autofocus: no valid Z positions in range', 'err'); return; }
+
+  afRunning = true; afCancelFlag = false;
+  setAfUI(true, 0, zSteps.length, `0 / ${zSteps.length}`);
+  log(`Autofocus: sweeping ${zSteps.length} positions ±${range} steps, step=${stepSz}`, 'sys');
+
+  let bestZ = pos.Z, bestScore = -Infinity;
+
+  try {
+    for (let i = 0; i < zSteps.length; i++) {
+      if (afCancelFlag) { log('Autofocus cancelled.', 'sys'); break; }
+      const targetZ = zSteps[i];
+      const done = waitForDone(15000);
+      await send(`A ${pos.X} ${pos.Y} ${targetZ}`);
+      await done;
+      await _sleep(settle);
+      const score = await getFocusScore();
+      if (score > bestScore) { bestScore = score; bestZ = targetZ; }
+      setAfUI(true, i + 1, zSteps.length, `Z=${targetZ}  score=${score.toFixed(1)}  best=${bestScore.toFixed(1)}`);
+    }
+
+    if (!afCancelFlag) {
+      log(`Autofocus: best Z=${bestZ} (score=${bestScore.toFixed(1)}) — moving there`, 'sys');
+      const done = waitForDone(15000);
+      await send(`A ${pos.X} ${pos.Y} ${bestZ}`);
+      await done;
+    }
+  } catch(e) {
+    log('Autofocus error: ' + e.message, 'err');
+  } finally {
+    afRunning = false;
+    setAfUI(false);
+  }
+}
+
+function cancelAutofocus() { afCancelFlag = true; }
+
+// ── Camera ─────────────────────────────────────────────────
+const CAM_URL = 'http://127.0.0.1:8765';
+let cameraActive = false;
+let camPingTimer = null;
+
+function setCamStatus(state, text) {
+  // state: '' | 'on' | 'err'
+  document.getElementById('camDot').className = 'cam-dot' + (state ? ' ' + state : '');
+  document.getElementById('camStatusText').textContent = text;
+}
+
+function showCamErr(msg) {
+  const el = document.getElementById('camErrText');
+  el.textContent = msg;
+  el.style.display = msg ? '' : 'none';
+}
+
+function onCamImgError() {
+  // MJPEG img failed — server went away
+  if (cameraActive) _camDisconnect('Stream lost — is camera_server.py running?');
+}
+
+function _camConnect(serverConfig) {
+  cameraActive = true;
+  const img = document.getElementById('camImg');
+  // Add timestamp to bust any stale cached stream
+  img.src = CAM_URL + '/stream?' + Date.now();
+  img.style.display = 'block';
+  document.getElementById('camPlaceholder').style.display = 'none';
+
+  const btn = document.getElementById('camConnBtn');
+  btn.textContent = 'Disconnect Camera';
+  btn.classList.add('active');
+
+  if (serverConfig && serverConfig.error) {
+    setCamStatus('err', serverConfig.error);
+    showCamErr(serverConfig.error);
+  } else {
+    setCamStatus('on', serverConfig && serverConfig.connected ? 'live' : 'server up');
+    showCamErr('');
+  }
+
+  // Sync exposure/fps inputs from server
+  if (serverConfig) {
+    if (serverConfig.exposure_us) document.getElementById('camExposure').value = serverConfig.exposure_us;
+    if (serverConfig.fps)         document.getElementById('camFps').value = serverConfig.fps;
+  }
+}
+
+function _camDisconnect(reason) {
+  cameraActive = false;
+  const img = document.getElementById('camImg');
+  img.src = '';
+  img.style.display = 'none';
+  document.getElementById('camPlaceholder').style.display = '';
+  document.getElementById('camPlaceholder').innerHTML =
+    `<div class="cam-placeholder-icon">⬡</div>` +
+    `<div>${reason || 'Disconnected'}</div>` +
+    `<div style="font-size:10px;color:var(--border2);">Click Connect Camera to retry</div>`;
+
+  const btn = document.getElementById('camConnBtn');
+  btn.textContent = 'Connect Camera';
+  btn.classList.remove('active');
+  setCamStatus('err', 'disconnected');
+}
+
+async function _pingCamServer() {
+  try {
+    const r = await fetch(CAM_URL + '/config', { signal: AbortSignal.timeout(1500) });
+    if (!r.ok) throw new Error('bad status');
+    const data = await r.json();
+
+    if (!cameraActive) {
+      // Auto-connect on first successful ping
+      _camConnect(data);
+    } else {
+      // Update status from server
+      if (data.error) {
+        setCamStatus('err', data.error);
+        showCamErr(data.error);
+      } else {
+        setCamStatus('on', data.connected ? 'live' : 'no camera');
+        showCamErr('');
+      }
+    }
+  } catch (_) {
+    if (cameraActive) _camDisconnect('Server unreachable — is camera_server.py running?');
+    else setCamStatus('', 'not connected');
+  }
+}
+
+function toggleCamera() {
+  if (cameraActive) {
+    _camDisconnect('Disconnected');
+    clearInterval(camPingTimer);
+    camPingTimer = null;
+    setCamStatus('', 'disconnected');
+    showCamErr('');
+  } else {
+    _pingCamServer();
+    if (!camPingTimer) camPingTimer = setInterval(_pingCamServer, 3000);
+  }
+}
+
+async function applyCamConfig() {
+  const exposure = parseFloat(document.getElementById('camExposure').value);
+  const fps      = parseFloat(document.getElementById('camFps').value);
+  if (!isFinite(exposure) || !isFinite(fps)) { showCamErr('Invalid value'); return; }
+  try {
+    const r = await fetch(CAM_URL + '/config', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ exposure_us: exposure, fps }),
+      signal:  AbortSignal.timeout(2000),
+    });
+    if (r.ok) showCamErr('');
+    else      showCamErr('Apply failed');
+  } catch (_) {
+    showCamErr('Server unreachable');
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────
+log('XYZ Stage Controller ready.', 'sys');
+log('Open Chrome/Edge and click Connect.', 'sys');
+updateLimitsUI();
+updateCalBadge();
+updateCalUI();
+updateFocusUI();
+loadStateFromLocalStorage();
+_initProjDrop();
+
+// Auto-try camera server on load and keep polling
+camPingTimer = setInterval(_pingCamServer, 3000);
+_pingCamServer();
+</script>
+</body>
+</html>
