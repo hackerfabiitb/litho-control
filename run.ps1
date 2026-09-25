@@ -1,1 +1,0 @@
-.\.venv\Scripts\python.exe deflicker_live.py --full --scale 0.5 --exposure 1000 --threshold-low 21

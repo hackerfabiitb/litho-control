@@ -6,9 +6,9 @@ too bright is a blown-out one. Dropped frames leave the previous good frame on
 screen, so the display is steady instead of strobing. Without thresholds the
 first --calib frames are used to find the band (same split as capture_frames.py).
 
-    python deflicker_live.py --exposure 5000
-    python deflicker_live.py --threshold-low 150 --threshold-high 240 --scale 0.5
-    python deflicker_live.py --width 640 --height 480      # ~99 fps instead of 41
+    python camera/deflicker_live.py --exposure 5000
+    python camera/deflicker_live.py --threshold-low 150 --threshold-high 240 --scale 0.5
+    python camera/deflicker_live.py --width 640 --height 480      # ~99 fps instead of 41
 
 Keys:  q/Esc quit   r recalibrate   s save a snapshot
        [ / ]  lower / raise the low cutoff

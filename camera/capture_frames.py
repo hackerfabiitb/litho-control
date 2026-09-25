@@ -4,7 +4,7 @@ Frames are buffered in RAM while grabbing (PNG encoding is far slower than the
 41 fps the camera runs at, so writing inline would drop frames), then written to
 disk afterwards along with a per-frame CSV of brightness stats.
 
-    python capture_frames.py --num 120 --exposure 5000 --outdir frames
+    python camera/capture_frames.py --num 120 --exposure 5000
 
 Read the printed histogram and "suggested threshold" — that value feeds
 deflicker_live.py --threshold.
@@ -28,7 +28,8 @@ def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--num", type=int, default=120, help="frames to grab (default 120)")
-    p.add_argument("--outdir", default="frames", help="output directory")
+    p.add_argument("--outdir", default=os.path.join(os.path.dirname(__file__), "frames"),
+                   help="output directory (default camera/frames)")
     p.add_argument("--format", default="png", choices=["png", "jpg", "tif"],
                    help="image file format (default png)")
     p.add_argument("--save", default="all",
