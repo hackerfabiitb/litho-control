@@ -3,19 +3,20 @@
 An Arduino Uno with a stepper motor shield drives three steppers (X, Y, Z).
 The firmware and browser UI come from the older
 [hackerfabiitb/litho-ui](https://github.com/hackerfabiitb/litho-ui) repo
-(copied at commit `bda24e5`).
+(copied at commit `bda24e5`). The UI now lives in [`ui/`](../ui/README.md),
+served by `ui/server.py` together with the projector and camera panes.
 
 | file | what it is | origin |
 | --- | --- | --- |
-| `firmware/xyz1/xyz1.ino` | stage firmware: serial protocol, soft limits, EEPROM position memory | litho-ui |
-| `stage_controller.html` | browser UI, talks to the Arduino directly over Web Serial | litho-ui |
-| `camera_server.py` | MJPEG server that feeds the Basler camera into the UI (not used yet) | litho-ui |
-| `start.bat` | original launcher: starts `camera_server.py` and Chrome | litho-ui |
+| `firmware/xyz1/xyz1.ino` | stage firmware: serial protocol, soft limits, EEPROM position memory | litho-ui, changed (driver power) |
 | `litho-ui_README.md` | original README: full serial protocol, EEPROM layout, UI features | litho-ui |
 | `XYZ_Stage_Controller_Manual.docx` | original user manual | litho-ui |
 | `find_arduino.py` | finds the Arduino's COM port, and can check which firmware is on it | new |
-| `start_ui.ps1` | opens the UI in Chrome, or Edge if Chrome is missing; no camera server | new |
 | `firmware/backup/` | the Uno's flash before `xyz1` was loaded | new |
+
+litho-ui's `stage_controller.html` became `ui/index.html`.
+`camera_server.py`, `start.bat` and the interim `start_ui.ps1` were replaced
+by `ui/server.py` and `ui/start.ps1`; they remain in git history.
 
 ## Hardware
 
@@ -45,7 +46,7 @@ position query). Nothing moves. From Python, use
 ## Run the UI
 
 ```powershell
-.\xyz_stage\start_ui.ps1
+.\ui\start.ps1
 ```
 
 Then click **Connect** and choose **COM4**. Web Serial only lets a person
@@ -53,11 +54,7 @@ pick the port, so no script can connect for you. Only one program can hold
 COM4 at a time: disconnect in the UI before running `find_arduino.py
 --probe` or flashing.
 
-- **Camera panel:** shows "disconnected" unless `camera_server.py` is running.
-  That's expected for now. The server needs the Basler camera, so it can't run
-  alongside `camera\run.ps1`.
-- **Projector window:** the UI opens `projector.html`, which isn't in
-  litho-ui, so this button doesn't work.
+- **Projector and camera panes:** see [ui/README.md](../ui/README.md).
 - **Keys:** arrow keys jog X/Y, PgUp/PgDn jog Z. See `litho-ui_README.md`
   for the rest.
 - **Motor toggle:** "Motors released when idle (quiet)" by default; see

@@ -9,6 +9,7 @@
   - `camera/README.md`
   - `projector/README.md`
   - `xyz_stage/README.md`
+  - `ui/README.md`
 - **Record debugging results.** Add each hardware investigation to the
   "Debugging log" of the relevant directory's README. Include the date,
   symptom, method, measured results, interpretation, next steps and status.
@@ -21,16 +22,22 @@
 - `projector/`: DLP471TPEVM: test patterns, calibration, DMD diagnostics.
   Reuse `display.py` and `capture.py` rather than writing new pattern or
   capture code.
-- `xyz_stage/`: Arduino Uno stepper stage. Firmware in `firmware/xyz1/`; the
-  browser UI is `stage_controller.html` (`start_ui.ps1`). Use
+- `xyz_stage/`: Arduino Uno stepper stage. Firmware in `firmware/xyz1/`. Use
   `find_arduino.find_arduino()` to get the port rather than hard-coding it.
+- `ui/`: the control page (`index.html`, from litho-ui) and `server.py`. The
+  server serves the page, projects images through `projector/display.py`,
+  mirrors the projector's screen, and streams the camera through the keep
+  rule in `camera/deflicker.py`. Start it with `ui\start.ps1`. Put new
+  camera, projector or stage features in the UI through the server rather
+  than as separate scripts.
 - One venv at the repo root: `.venv\Scripts\python.exe`. Run scripts from the
   repo root.
 
 ## Hardware gotchas
 - The Basler camera allows **one client at a time**. The live viewer
-  (`deflicker_live.py`) or pylon Viewer must be closed before any other script
-  opens the camera. If you have to stop the viewer, tell the user.
+  (`deflicker_live.py`), `ui/server.py` or pylon Viewer must be closed before
+  any other script opens the camera. If you have to stop one of them, tell
+  the user.
 - The projector is `\\.\DISPLAY5`, 3840×2160 at 150 % scaling. Patterns need
   a per-monitor-DPI-aware process, which `projector/display.py` sets up.
 - The projector must be powered on to appear on USB (`VID_0451&PID_7540`).

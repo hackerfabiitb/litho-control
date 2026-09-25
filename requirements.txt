@@ -9,3 +9,4 @@ opencv-python>=4.8    # tested: 5.0.0.93
 numpy>=1.26           # tested: 2.5.1
 pyserial>=3.5         # tested: 3.5 (xyz_stage)
 matplotlib>=3.8        # tested: 3.11.2 (projector/flicker.py plots)
+mss>=10.0              # tested: 10.2.0 (ui/server.py projector mirror)

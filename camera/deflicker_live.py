@@ -31,6 +31,7 @@ import cv2
 import numpy as np
 from pypylon import pylon
 
+from deflicker import RECENT_FRAMES, relative_cutoff
 from pylon_utils import (add_camera_args, add_threshold_args, camera_kwargs,
                          frame_score, full_scale, grab_frames, open_camera,
                          suggest_band)
@@ -142,7 +143,7 @@ def main():
     low = args.threshold_low
     high = float("inf") if args.no_high else args.threshold_high
     keep_frac = args.keep_frac
-    recent_means = deque(maxlen=80)  # ~2 s at 41 fps, for --keep-frac
+    recent_means = deque(maxlen=RECENT_FRAMES)  # ~2 s, for --keep-frac
     if keep_frac is not None:
         # Relative mode: low follows the recent brightest frames, so there
         # is nothing to calibrate; the high cutoff is only what was pinned.
@@ -178,8 +179,7 @@ def main():
                 # The projector's light is on for ~2/3 of every 4.167 ms, so
                 # the top of the recent brightness spread is what a frame that
                 # saw the full light looks like; keep frames close to it.
-                low = (keep_frac * float(np.percentile(recent_means, 95))
-                       if len(recent_means) >= 10 else 0.0)
+                low = relative_cutoff(recent_means, keep_frac)
 
             if calibrating:
                 calib_means.append(mean)

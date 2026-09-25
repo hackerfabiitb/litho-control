@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>XYZ Stage Controller</title>
+<title>Litho Control</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -145,12 +145,26 @@
   .cam-dot.on  { background: var(--accent); box-shadow: 0 0 5px var(--accent); }
   .cam-dot.err { background: var(--danger); }
   .cam-status-text { font-size: 10px; color: var(--muted); }
+  .pane-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+  }
+  .pane { display: flex; flex-direction: column; background: var(--bg1); min-width: 0; }
+  .pane-label {
+    display: flex; justify-content: space-between; gap: 8px;
+    padding: 4px 10px; font-size: 9px; letter-spacing: 0.15em;
+    color: var(--muted); border-bottom: 1px solid var(--border);
+    white-space: nowrap; overflow: hidden;
+  }
+  .pane-label span:last-child { letter-spacing: 0; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
   .cam-feed-wrap {
     background: #080808;
     position: relative;
     overflow: hidden;
     flex-shrink: 0;
-    height: 320px;
+    height: min(42vh, 460px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -484,6 +498,7 @@
   }
   .hz-btn:hover { border-color: var(--border2); color: var(--text); }
   .hz-btn.warn:hover { border-color: var(--warn); color: var(--warn); }
+  .hz-btn.active { border-color: var(--blue); color: var(--blue); }
 
   /* ── Log ── */
   .log-wrap { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
@@ -1021,33 +1036,53 @@
   <!-- CENTER PANEL -->
   <div class="center" id="centerPanel">
 
-    <!-- CAMERA SECTION -->
+    <!-- PROJECTOR + CAMERA PANES -->
     <div class="cam-section">
       <div class="cam-header">
         <div class="cam-dot" id="camDot"></div>
-        <span class="cam-title">Camera Feed</span>
+        <span class="cam-title">Projector &nbsp;·&nbsp; Camera (deflickered)</span>
         <span class="cam-status-text" id="camStatusText">not connected</span>
         <div class="cam-sep"></div>
-        <button class="conn-btn" id="camConnBtn" onclick="toggleCamera()" style="font-size:10px;padding:4px 12px;">Connect Camera</button>
+        <button class="conn-btn" id="camConnBtn" onclick="toggleCamera()" style="font-size:10px;padding:4px 12px;">Connect</button>
       </div>
-      <div class="cam-feed-wrap" id="camFeedWrap">
-        <img id="camImg" src="" alt="" style="display:none;" onerror="onCamImgError()" />
-        <div class="cam-placeholder" id="camPlaceholder">
-          <div class="cam-placeholder-icon">⬡</div>
-          <div>Start <strong>camera_server.py</strong> then click Connect Camera</div>
-          <div style="font-size:10px;color:var(--border2);">Requires pypylon + opencv-python</div>
+      <div class="pane-grid">
+        <div class="pane">
+          <div class="pane-label"><span>PROJECTOR</span><span id="projPaneInfo">—</span></div>
+          <div class="cam-feed-wrap">
+            <img id="projMirrorImg" src="" alt="" style="display:none;" />
+            <div class="cam-placeholder" id="projMirrorPlaceholder">
+              <div class="cam-placeholder-icon">▭</div>
+              <div>What the projector is showing, captured from its display</div>
+            </div>
+          </div>
+        </div>
+        <div class="pane">
+          <div class="pane-label"><span>CAMERA</span><span id="camPaneInfo">—</span></div>
+          <div class="cam-feed-wrap" id="camFeedWrap">
+            <img id="camImg" src="" alt="" style="display:none;" onerror="onCamImgError()" />
+            <div class="cam-placeholder" id="camPlaceholder">
+              <div class="cam-placeholder-icon">⬡</div>
+              <div>Run <strong>ui\start.ps1</strong> (or <strong>ui/server.py</strong>) and open this page from it</div>
+              <div style="font-size:10px;color:var(--border2);">Close the live viewer and pylon Viewer — the camera allows one client</div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="cam-controls">
         <div class="cam-ctrl-group">
           <span class="cam-ctrl-label">EXPOSURE</span>
-          <input class="tinput" type="number" id="camExposure" value="10000" min="100" max="1000000" style="width:90px;" />
+          <input class="tinput" type="number" id="camExposure" value="400" min="34" max="1000000" style="width:80px;" />
           <span class="cam-ctrl-unit">µs</span>
         </div>
         <div class="cam-ctrl-group">
-          <span class="cam-ctrl-label">FRAME RATE</span>
-          <input class="tinput" type="number" id="camFps" value="10" min="1" max="200" style="width:60px;" />
-          <span class="cam-ctrl-unit">fps</span>
+          <span class="cam-ctrl-label">KEEP ≥</span>
+          <input class="tinput" type="number" id="camKeepFrac" value="0.8" min="0" max="1" step="0.02" style="width:60px;" />
+          <span class="cam-ctrl-unit">× recent top</span>
+        </div>
+        <div class="cam-ctrl-group">
+          <span class="cam-ctrl-label">MAX HOLD</span>
+          <input class="tinput" type="number" id="camMaxHold" value="0.5" min="0" max="10" step="0.1" style="width:60px;" />
+          <span class="cam-ctrl-unit">s</span>
         </div>
         <button class="cam-apply-btn" onclick="applyCamConfig()">Apply</button>
         <span class="cam-err-text" id="camErrText"></span>
@@ -1310,7 +1345,7 @@
           <input type="file" id="projFileInput" accept="image/*" style="display:none;" onchange="onProjFileChange(event)" />
           <div class="proj-dropzone-icon">⊞</div>
           <div>Click to browse or drop image here</div>
-          <div style="font-size:10px;color:var(--dim);">PNG · JPG · TIFF · BMP · SVG · GIF</div>
+          <div style="font-size:10px;color:var(--dim);">PNG · JPG · TIFF · BMP</div>
         </div>
         <div class="proj-preview-wrap" id="projPreviewWrap" style="display:none;">
           <img class="proj-preview-img" id="projPreviewImg" src="" alt="" />
@@ -1324,34 +1359,34 @@
         </div>
       </div>
 
-      <!-- Display selection -->
+      <!-- Display -->
       <hr class="cal-section-sep" />
       <div>
         <div class="proj-section-label">Display</div>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-          <button class="cam-apply-btn" onclick="detectProjScreens()" id="projDetectBtn">Detect Screens</button>
-          <span style="font-size:10px;color:var(--dim);" id="projScreenHint">Click to enumerate connected displays</span>
-        </div>
-        <div class="proj-screen-list" id="projScreenList"></div>
+        <div style="font-size:11px;color:var(--text);" id="projMonitorInfo">—</div>
       </div>
 
       <!-- Controls -->
       <hr class="cal-section-sep" />
       <div style="display:flex;gap:8px;">
         <button class="cal-all-btn" id="projBtn" onclick="startProjection()">Project Image →</button>
-        <button class="cal-axis-btn" id="projStopBtn" onclick="stopProjection()" style="display:none;padding:8px 16px;border-color:var(--danger);color:var(--danger);">Stop</button>
+        <button class="cal-axis-btn" onclick="blankProjection()" style="padding:8px 16px;">Blank</button>
+        <button class="cal-axis-btn" id="projStopBtn" onclick="stopProjection()" style="display:none;padding:8px 16px;border-color:var(--danger);color:var(--danger);">Close</button>
       </div>
       <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
         <span style="font-size:9px;color:var(--muted);letter-spacing:0.12em;">FIT</span>
-        <button class="hz-btn" style="flex:1;font-size:9px;" onclick="setProjFit('contain')">Contain</button>
-        <button class="hz-btn" style="flex:1;font-size:9px;" onclick="setProjFit('cover')">Cover</button>
-        <button class="hz-btn" style="flex:1;font-size:9px;" onclick="setProjFit('fill')">Stretch</button>
+        <button class="hz-btn" data-fit="native"  style="flex:1;font-size:9px;" onclick="setProjFit('native')">1:1 pixels</button>
+        <button class="hz-btn" data-fit="contain" style="flex:1;font-size:9px;" onclick="setProjFit('contain')">Contain</button>
+        <button class="hz-btn" data-fit="cover"   style="flex:1;font-size:9px;" onclick="setProjFit('cover')">Cover</button>
+        <button class="hz-btn" data-fit="stretch" style="flex:1;font-size:9px;" onclick="setProjFit('stretch')">Stretch</button>
       </div>
       <div class="proj-tip" style="margin-top:10px;">
-        <strong>projector.html</strong> opens on the selected display as an independent window —
-        your main screen stays free. Click inside it or press <strong>F</strong> to fullscreen,
-        <strong>C</strong> to cycle fit modes, <strong>Esc</strong> to exit fullscreen.
-        Loading a new image sends it instantly without reopening the window.
+        The server shows the image full-screen on the projector at its native resolution,
+        with no browser scaling. <strong>1:1 pixels</strong> maps each image pixel to one
+        projector input pixel, centred, which is the mode for masks; the other fits scale
+        with nearest-neighbour so binary masks stay binary. <strong>Blank</strong> shows black;
+        <strong>Close</strong> removes the window and the projector shows the desktop again.
+        The PROJECTOR pane mirrors what the projector is really showing.
       </div>
 
     </div>
@@ -1882,27 +1917,22 @@ document.addEventListener('keydown', e => {
 });
 
 // ── Projector ───────────────────────────────────────────────
-let projWin        = null;
-let projBlobUrl    = null;
-let projScreenDets = null;
-let projSelScreen  = null;
-let projPollTimer  = null;
+// ui/server.py shows the image full-screen on the projector itself, at its
+// native 3840x2160 with no browser scaling, and mirrors the projector's
+// screen into the PROJECTOR pane.
+let projFile    = null;
+let projBlobUrl = null;
+let projFit     = 'native';
+let projState   = 'closed';
 
-// Listen for messages from projector.html (ready / pong)
-window.addEventListener('message', e => {
-  if (!e.data || !e.data.type) return;
-  if ((e.data.type === 'ready' || e.data.type === 'pong') && projBlobUrl && projWin && !projWin.closed) {
-    projWin.postMessage({ type: 'image', src: projBlobUrl }, '*');
-  }
-});
-
-function openProjModal()  { document.getElementById('projOverlay').classList.add('open'); }
+function openProjModal()  { document.getElementById('projOverlay').classList.add('open'); _refreshProjStatus(); }
 function closeProjModal() { document.getElementById('projOverlay').classList.remove('open'); }
 
 function onProjFileChange(e) { if (e.target.files[0]) loadProjFile(e.target.files[0]); }
 
 function resetProjImage() {
   if (projBlobUrl) { URL.revokeObjectURL(projBlobUrl); projBlobUrl = null; }
+  projFile = null;
   document.getElementById('projPreviewWrap').style.display = 'none';
   document.getElementById('projDropzone').style.display = '';
   document.getElementById('projFileInput').value = '';
@@ -1910,6 +1940,7 @@ function resetProjImage() {
 
 function loadProjFile(file) {
   if (projBlobUrl) URL.revokeObjectURL(projBlobUrl);
+  projFile = file;
   projBlobUrl = URL.createObjectURL(file);
   document.getElementById('projPreviewImg').src = projBlobUrl;
   document.getElementById('projFileName').textContent = file.name;
@@ -1917,13 +1948,29 @@ function loadProjFile(file) {
     file.size > 1048576 ? (file.size/1048576).toFixed(1)+' MB' : Math.round(file.size/1024)+' KB';
   document.getElementById('projPreviewWrap').style.display = '';
   document.getElementById('projDropzone').style.display = 'none';
-  // Push to projector window immediately if already open
-  if (projWin && !projWin.closed) projWin.postMessage({ type: 'image', src: projBlobUrl }, '*');
-  log('Projector: image loaded' + (projWin && !projWin.closed ? ' — sent to projector' : ''), 'sys');
+  log('Projector: image loaded — click Project Image to show it', 'sys');
 }
 
-function setProjFit(mode) {
-  if (projWin && !projWin.closed) projWin.postMessage({ type: 'fit', value: mode }, '*');
+async function _projPost(path, body, headers) {
+  const r = await fetch(path, { method: 'POST', body, headers, signal: AbortSignal.timeout(10000) });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+  _setProjStatus(data);
+  return data;
+}
+
+async function setProjFit(mode) {
+  projFit = mode;
+  _renderFitButtons();
+  if (projState !== 'image') return;
+  try { await _projPost('/projector/fit', JSON.stringify({ fit: mode }),
+                        { 'Content-Type': 'application/json' }); }
+  catch (e) { log('Projector: ' + e.message, 'err'); }
+}
+
+function _renderFitButtons() {
+  document.querySelectorAll('[data-fit]').forEach(b =>
+    b.classList.toggle('active', b.dataset.fit === projFit));
 }
 
 function _initProjDrop() {
@@ -1936,96 +1983,47 @@ function _initProjDrop() {
     const f = e.dataTransfer.files[0];
     if (f && f.type.startsWith('image/')) loadProjFile(f);
   });
+  _renderFitButtons();
 }
 
-async function detectProjScreens() {
-  if (!('getScreenDetails' in window)) {
-    document.getElementById('projScreenHint').textContent =
-      'Window Management API not supported — drag the window to your projector manually';
-    return;
-  }
+async function startProjection() {
+  if (!projFile) { log('Projector: load an image first', 'err'); return; }
   try {
-    projScreenDets = await window.getScreenDetails();
-    projSelScreen = projScreenDets.screens.find(s => !s.isPrimary) || projScreenDets.screens[0];
-    _renderProjScreenList();
-    projScreenDets.addEventListener('screenschange', _renderProjScreenList);
-    document.getElementById('projScreenHint').textContent =
-      projScreenDets.screens.length + ' display(s) detected';
-  } catch(_) {
-    document.getElementById('projScreenHint').textContent =
-      'Permission denied — drag the window to your projector manually';
-  }
+    const q = `?fit=${projFit}&name=${encodeURIComponent(projFile.name)}`;
+    const s = await _projPost('/projector/image' + q, projFile,
+                              { 'Content-Type': 'application/octet-stream' });
+    log(`Projector: showing ${s.image} (${s.image_size[0]}×${s.image_size[1]}, ${s.fit})`, 'sys');
+  } catch (e) { log('Projector: ' + e.message, 'err'); }
 }
 
-function _renderProjScreenList() {
-  const screens = projScreenDets ? projScreenDets.screens : [];
-  document.getElementById('projScreenList').innerHTML = screens.map((s, i) => {
-    const ext = !s.isPrimary, sel = projSelScreen === s;
-    const name = s.isPrimary ? 'Primary (this monitor)' : `Screen ${i+1} — HDMI / projector`;
-    return `<div class="proj-screen-item${sel?' selected':''}" onclick="_selectProjScreen(${i})">
-      <div class="proj-screen-dot${ext?' ext':''}"></div>
-      <span class="proj-screen-name">${name}</span>
-      <span class="proj-screen-res">${s.width}×${s.height}</span>
-    </div>`;
-  }).join('');
+async function blankProjection() {
+  try { await _projPost('/projector/blank'); log('Projector: blank (black)', 'sys'); }
+  catch (e) { log('Projector: ' + e.message, 'err'); }
 }
 
-function _selectProjScreen(idx) {
-  projSelScreen = projScreenDets.screens[idx];
-  _renderProjScreenList();
+async function stopProjection() {
+  try { await _projPost('/projector/close'); log('Projector: window closed — desktop visible', 'sys'); }
+  catch (e) { log('Projector: ' + e.message, 'err'); }
 }
 
-function startProjection() {
-  if (!projBlobUrl) { log('Projector: load an image first', 'err'); return; }
-
-  // If already open just resend the image
-  if (projWin && !projWin.closed) {
-    projWin.postMessage({ type: 'image', src: projBlobUrl }, '*');
-    projWin.focus();
-    return;
-  }
-
-  let L = 0, T = 0, W = screen.availWidth, H = screen.availHeight;
-  if (projSelScreen) {
-    L = projSelScreen.availLeft   ?? projSelScreen.left   ?? 0;
-    T = projSelScreen.availTop    ?? projSelScreen.top    ?? 0;
-    W = projSelScreen.availWidth  ?? projSelScreen.width  ?? screen.availWidth;
-    H = projSelScreen.availHeight ?? projSelScreen.height ?? screen.availHeight;
-  }
-
-  projWin = window.open('projector.html', 'xyzProjector',
-    `toolbar=no,location=no,menubar=no,status=no,scrollbars=no,` +
-    `left=${L},top=${T},width=${W},height=${H}`);
-
-  if (!projWin) { log('Projector: popup blocked — allow popups for this page', 'err'); return; }
-
-  // projector.html postMessages 'ready' on load → window.onmessage resends the image
-  _setProjStatus(true);
-  log('Projector: window opened', 'sys');
-
-  clearInterval(projPollTimer);
-  projPollTimer = setInterval(() => {
-    if (projWin && projWin.closed) {
-      clearInterval(projPollTimer);
-      projWin = null;
-      _setProjStatus(false);
-    }
-  }, 800);
+async function _refreshProjStatus() {
+  try {
+    const r = await fetch('/projector/status', { signal: AbortSignal.timeout(1500) });
+    if (r.ok) _setProjStatus(await r.json());
+  } catch (_) { /* server down: the camera ping reports it */ }
 }
 
-function stopProjection() {
-  clearInterval(projPollTimer);
-  if (projWin && !projWin.closed) projWin.postMessage({ type: 'clear' }, '*');
-  if (projWin && !projWin.closed) projWin.close();
-  projWin = null;
-  _setProjStatus(false);
-  log('Projector: stopped', 'sys');
-}
-
-function _setProjStatus(active) {
+function _setProjStatus(s) {
+  projState = s.state;
+  const active = s.state !== 'closed';
+  const label = { closed: 'desktop (no pattern window)', blank: 'blank (black)',
+                  image: `${s.image} · ${s.fit}` }[s.state];
   document.getElementById('projDot').className = 'proj-status-dot' + (active ? ' on' : '');
-  document.getElementById('projStatusText').textContent = active ? 'projecting' : 'not projecting';
-  document.getElementById('projBtn').textContent = active ? 'Send Image Again →' : 'Project Image →';
+  document.getElementById('projStatusText').textContent = label;
+  document.getElementById('projPaneInfo').textContent = label;
+  document.getElementById('projMonitorInfo').textContent =
+    `${s.monitor.replace(/^\\\\\.\\/, '')} · ${s.width}×${s.height}`;
+  document.getElementById('projBtn').textContent = s.state === 'image' ? 'Send Image Again →' : 'Project Image →';
   document.getElementById('projStopBtn').style.display = active ? '' : 'none';
 }
 
@@ -2234,8 +2232,10 @@ async function runAutofocus() {
 
 function cancelAutofocus() { afCancelFlag = true; }
 
-// ── Camera ─────────────────────────────────────────────────
-const CAM_URL = 'http://127.0.0.1:8765';
+// ── Camera + projector mirror (served by ui/server.py) ──────────
+// Same origin: the page is served by ui/server.py, which also streams
+// /stream (deflickered camera) and /projector/stream (projector mirror).
+const CAM_URL = '';
 let cameraActive = false;
 let camPingTimer = null;
 
@@ -2253,49 +2253,62 @@ function showCamErr(msg) {
 
 function onCamImgError() {
   // MJPEG img failed — server went away
-  if (cameraActive) _camDisconnect('Stream lost — is camera_server.py running?');
+  if (cameraActive) _camDisconnect('Stream lost — is ui/server.py running?');
+}
+
+function _camStatsText(c) {
+  if (!c.connected) return c.error || 'camera not open';
+  return `${c.in_fps} fps in → ${c.shown_fps} shown · mean ${c.mean} / cutoff ${c.cutoff}` +
+         ` · forced ${c.forced}`;
 }
 
 function _camConnect(serverConfig) {
   cameraActive = true;
+  const t = Date.now();              // bust any stale cached stream
   const img = document.getElementById('camImg');
-  // Add timestamp to bust any stale cached stream
-  img.src = CAM_URL + '/stream?' + Date.now();
+  img.src = CAM_URL + '/stream?' + t;
   img.style.display = 'block';
   document.getElementById('camPlaceholder').style.display = 'none';
+  const mir = document.getElementById('projMirrorImg');
+  mir.src = CAM_URL + '/projector/stream?' + t;
+  mir.style.display = 'block';
+  document.getElementById('projMirrorPlaceholder').style.display = 'none';
 
   const btn = document.getElementById('camConnBtn');
-  btn.textContent = 'Disconnect Camera';
+  btn.textContent = 'Disconnect';
   btn.classList.add('active');
 
-  if (serverConfig && serverConfig.error) {
-    setCamStatus('err', serverConfig.error);
-    showCamErr(serverConfig.error);
-  } else {
-    setCamStatus('on', serverConfig && serverConfig.connected ? 'live' : 'server up');
-    showCamErr('');
-  }
-
-  // Sync exposure/fps inputs from server
+  _camShowConfig(serverConfig);
   if (serverConfig) {
-    if (serverConfig.exposure_us) document.getElementById('camExposure').value = serverConfig.exposure_us;
-    if (serverConfig.fps)         document.getElementById('camFps').value = serverConfig.fps;
+    document.getElementById('camExposure').value = serverConfig.exposure_us;
+    document.getElementById('camKeepFrac').value = serverConfig.keep_frac;
+    document.getElementById('camMaxHold').value  = serverConfig.max_hold;
   }
+}
+
+function _camShowConfig(c) {
+  if (!c) return;
+  if (c.error) { setCamStatus('err', 'camera error'); showCamErr(c.error); }
+  else         { setCamStatus('on', c.connected ? 'live' : 'opening camera…'); showCamErr(''); }
+  document.getElementById('camPaneInfo').textContent = _camStatsText(c);
 }
 
 function _camDisconnect(reason) {
   cameraActive = false;
-  const img = document.getElementById('camImg');
-  img.src = '';
-  img.style.display = 'none';
+  for (const id of ['camImg', 'projMirrorImg']) {
+    const img = document.getElementById(id);
+    img.src = '';
+    img.style.display = 'none';
+  }
+  document.getElementById('projMirrorPlaceholder').style.display = '';
   document.getElementById('camPlaceholder').style.display = '';
   document.getElementById('camPlaceholder').innerHTML =
     `<div class="cam-placeholder-icon">⬡</div>` +
     `<div>${reason || 'Disconnected'}</div>` +
-    `<div style="font-size:10px;color:var(--border2);">Click Connect Camera to retry</div>`;
+    `<div style="font-size:10px;color:var(--border2);">Click Connect to retry</div>`;
 
   const btn = document.getElementById('camConnBtn');
-  btn.textContent = 'Connect Camera';
+  btn.textContent = 'Connect';
   btn.classList.remove('active');
   setCamStatus('err', 'disconnected');
 }
@@ -2305,22 +2318,11 @@ async function _pingCamServer() {
     const r = await fetch(CAM_URL + '/config', { signal: AbortSignal.timeout(1500) });
     if (!r.ok) throw new Error('bad status');
     const data = await r.json();
-
-    if (!cameraActive) {
-      // Auto-connect on first successful ping
-      _camConnect(data);
-    } else {
-      // Update status from server
-      if (data.error) {
-        setCamStatus('err', data.error);
-        showCamErr(data.error);
-      } else {
-        setCamStatus('on', data.connected ? 'live' : 'no camera');
-        showCamErr('');
-      }
-    }
+    if (!cameraActive) _camConnect(data);    // auto-connect on first ping
+    else               _camShowConfig(data);
+    _refreshProjStatus();
   } catch (_) {
-    if (cameraActive) _camDisconnect('Server unreachable — is camera_server.py running?');
+    if (cameraActive) _camDisconnect('Server unreachable — is ui/server.py running?');
     else setCamStatus('', 'not connected');
   }
 }
@@ -2334,22 +2336,23 @@ function toggleCamera() {
     showCamErr('');
   } else {
     _pingCamServer();
-    if (!camPingTimer) camPingTimer = setInterval(_pingCamServer, 3000);
+    if (!camPingTimer) camPingTimer = setInterval(_pingCamServer, 1000);
   }
 }
 
 async function applyCamConfig() {
-  const exposure = parseFloat(document.getElementById('camExposure').value);
-  const fps      = parseFloat(document.getElementById('camFps').value);
-  if (!isFinite(exposure) || !isFinite(fps)) { showCamErr('Invalid value'); return; }
+  const exposure_us = parseFloat(document.getElementById('camExposure').value);
+  const keep_frac   = parseFloat(document.getElementById('camKeepFrac').value);
+  const max_hold    = parseFloat(document.getElementById('camMaxHold').value);
+  if (![exposure_us, keep_frac, max_hold].every(isFinite)) { showCamErr('Invalid value'); return; }
   try {
     const r = await fetch(CAM_URL + '/config', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ exposure_us: exposure, fps }),
+      body:    JSON.stringify({ exposure_us, keep_frac, max_hold }),
       signal:  AbortSignal.timeout(2000),
     });
-    if (r.ok) showCamErr('');
+    if (r.ok) { showCamErr(''); _camShowConfig(await r.json()); }
     else      showCamErr('Apply failed');
   } catch (_) {
     showCamErr('Server unreachable');
@@ -2367,7 +2370,7 @@ loadStateFromLocalStorage();
 _initProjDrop();
 
 // Auto-try camera server on load and keep polling
-camPingTimer = setInterval(_pingCamServer, 3000);
+camPingTimer = setInterval(_pingCamServer, 1000);
 _pingCamServer();
 </script>
 </body>

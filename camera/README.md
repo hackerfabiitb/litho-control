@@ -19,6 +19,11 @@ before running these scripts**, or you get
 
 ## Recommended settings (live view of the projector)
 
+The same feed, with the same settings and keep rule (`deflicker.py`), is the
+CAMERA pane of the control UI ([`ui/`](../ui/README.md)), next to a mirror of
+the projector. Use either the UI or this standalone viewer, not both: they
+can't share the camera.
+
 ```powershell
 .\camera\run.ps1
 # which runs:
