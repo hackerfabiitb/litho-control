@@ -41,6 +41,10 @@
 - The projector is `\\.\DISPLAY5`, 3840×2160 at 150 % scaling. Patterns need
   a per-monitor-DPI-aware process, which `projector/display.py` sets up.
 - The projector must be powered on to appear on USB (`VID_0451&PID_7540`).
+  Its controller is a DLPC6540. "Ready; Curtain" with no light has had
+  different causes (a loose LED wire; a DMD init error after a flex reseat).
+  Ask the user for the GUI's Command Log reply to Read System Status and
+  decode it with `projector/evm_status.py` before guessing.
 - Camera settings (binning, AOI, frame-rate cap) persist in the camera between
   runs. `open_camera` clears the frame-rate cap when no fps is given; any
   script that sets a cap should clear it on exit, as `flicker.py sweep` does.
