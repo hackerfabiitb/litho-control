@@ -299,6 +299,30 @@ def save_config(config):
         fh.write("\n")
 
 
+def set_zero(link, config, axis, end, travel_mm, steps_per_mm):
+    """Make the current position the axis's zero, without a switch.
+
+    `end` is the side (+1 / -1) the zero sits at; the soft limits run
+    travel_mm the other way. The axis is saved with pin None, and later runs
+    trust the position the firmware keeps in EEPROM (saved after every move,
+    restored at power-up) instead of seeking. That holds only if the axis
+    isn't moved by hand, doesn't stall, and isn't pushed while released.
+    """
+    cfg = {"steps_per_mm": steps_per_mm, "travel_mm": travel_mm, "pin": None,
+           "toward": end,
+           "manual_zero": datetime.datetime.now().isoformat(timespec="seconds")}
+    full = travel_steps(cfg)
+    lo, hi = (0, full) if end < 0 else (-full, 0)
+    link.drain()
+    link.send(f"HOMED {axis} {lo} {hi}")
+    link.wait_for(lambda l: l == f"HOMED {axis}", timeout=5)
+    config["axes"][axis] = cfg
+    save_config(config)
+    print(f"  {axis}: current position is now 0 (no switch), soft limits {lo}..{hi} "
+          f"= {travel_mm} mm on the {'-' if end > 0 else '+'} side. Saved; later "
+          "runs keep this position instead of seeking.")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -306,21 +330,43 @@ def main():
                    help="redo the interactive setup for the chosen axes")
     p.add_argument("--axes", nargs="+", default=["X", "Y", "Z"],
                    type=str.upper, choices=["X", "Y", "Z"])
+    p.add_argument("--set-zero", type=str.upper, choices=["X", "Y", "Z"],
+                   help="no switch: make this axis's current position its zero "
+                        "(no motion); needs --end and --travel-mm")
+    p.add_argument("--end", choices=["+", "-"],
+                   help="with --set-zero: which end of the travel the axis is at")
+    p.add_argument("--travel-mm", type=float, default=TRAVEL_MM,
+                   help=f"with --set-zero: usable travel (default {TRAVEL_MM})")
+    p.add_argument("--steps-per-mm", type=float, default=400.0,
+                   help="with --set-zero (default 400)")
     args = p.parse_args()
 
     config = load_config()
     link = open_link()
     print(f"stage {link.description}; config {CONFIG}")
+    if args.set_zero:
+        if not args.end:
+            p.error("--set-zero needs --end + or --end -")
+        try:
+            set_zero(link, config, args.set_zero, 1 if args.end == "+" else -1,
+                     args.travel_mm, args.steps_per_mm)
+        finally:
+            link.close()
+        return 0
     last_spm = None
     try:
         for axis in args.axes:
             known = config["axes"].get(axis)
+            if known and known.get("pin") is None and not args.discover:
+                print(f"  {axis}: no switch (zeroed by hand {known['manual_zero']}); "
+                      "keeping the position saved in the firmware")
+                continue
             if known and not args.discover:
                 known["hysteresis_steps"] = home_axis(link, axis, known)
                 save_config(config)
                 continue
             taken = {c["pin"]: a for a, c in config["axes"].items()
-                     if a != axis and "pin" in c}
+                     if a != axis and c.get("pin")}
             # default steps/mm: this axis's saved value, else the last one typed
             previous = known or ({"steps_per_mm": last_spm} if last_spm else None)
             cfg = discover_axis(link, axis, previous, taken)

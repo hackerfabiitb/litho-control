@@ -66,6 +66,9 @@
   1 = open, 0 = pressed). Don't assume which pin is which axis: that's in
   `xyz_stage/homing.json`, found by `homing.py`. The far end of each axis is
   a fixed 12 mm away; 400 steps/mm (full step, 0.5 mm lead).
+- An axis with `"pin": null` in `homing.json` (Y for now) was zeroed by hand
+  (`homing.py --set-zero`). It's never seeked; its position relies on the
+  firmware's EEPROM and on the user not moving the stage between runs.
 - Only `SEEK` (homing) stops at switches. It aborts on any byte received, so
   send nothing to the stage while homing runs. A seek towards a missing or
   detached switch runs until its step limit and stalls at the end stop.

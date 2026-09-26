@@ -72,6 +72,22 @@ pick. Only one program can hold COM4 at a time. Before running
 
 Run it in a terminal you can type into: discovery asks questions.
 
+**An axis without a usable switch** can be zeroed where it stands, with no
+motion:
+
+```powershell
+.\.venv\Scripts\python.exe xyz_stage\homing.py --set-zero Y --end + --travel-mm 11
+```
+
+- `--end` says which end of its travel the axis is at; the soft limits run
+  `--travel-mm` the other way.
+- The axis is saved with `"pin": null`, and later homing runs **skip it and
+  keep the position the firmware saved**. The firmware writes the position
+  to EEPROM after every move and restores it at power-up.
+- That position is only right if nobody moves the axis by hand, it doesn't
+  stall, and nothing pushes it while its motor is released. Rerun
+  `--set-zero` or `--discover` if in doubt.
+
 **Discovery**, the first time for an axis:
 1. It asks for steps per mm (400 here).
 2. It moves the axis +100 steps. If a switch closes, that switch belongs to
@@ -233,10 +249,19 @@ moved 400 steps (1 mm) back: no switch was closed before or after, even
 though Y had been at the end stop. So the reattached switch isn't reached
 before the hard stop.
 
+**Y zeroed by hand (interim).** Until the switch is remounted, Y's current
+position was made its zero: `homing.py --set-zero Y --end + --travel-mm 11`.
+- **Where zero is:** 1 mm back from the + end stop.
+- **Limits:** −4400..0, so 11 mm towards −.
+- **Why 11 mm, not 12:** 1 mm of Y's travel is already used up on the stop
+  side, so 11 mm is what's guaranteed before the far end.
+- **Later runs** skip Y and trust the saved position; you confirmed the stage
+  isn't moved between runs.
+
 **Next:**
 1. Mount Y's switch where the carriage presses it before the hard stop, and
    check it with `limit_switches.py` by hand.
-2. Run `homing.py --axes Y Z`.
+2. Run `homing.py --discover --axes Y`, then `homing.py --axes Z`.
 
 **Lesson:** a seek towards a switch has no protection if the switch is
 missing; it only stops at its step limit (1.2 × travel + slack). A later

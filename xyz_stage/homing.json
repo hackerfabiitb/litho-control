@@ -6,8 +6,15 @@
       "pin": "D9",
       "toward": -1,
       "hysteresis_steps": 50
+    },
+    "Y": {
+      "steps_per_mm": 400.0,
+      "travel_mm": 11.0,
+      "pin": null,
+      "toward": 1,
+      "manual_zero": "2026-09-26T13:37:02"
     }
   },
-  "updated": "2026-09-26T13:28:13",
+  "updated": "2026-09-26T13:37:03",
   "note": "X entered by hand from the first discovery run (switch D9 closed after seeking -2667 steps); that run stopped at the fixed 100-step back-off."
 }
