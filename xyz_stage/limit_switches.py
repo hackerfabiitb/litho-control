@@ -10,18 +10,18 @@ is the other way round.
     python xyz_stage/limit_switches.py --duration 60 --log out.txt
 
 Goes through ui/server.py when it is running (it owns COM4), otherwise
-opens the port itself.
+opens the port itself (stage_link.py).
 """
 
 import argparse
-import json
 import sys
 import time
-import urllib.request
 
-SERVER = "http://127.0.0.1:8765"
-# Which shield header each pin serves (both - and + of an axis are in parallel).
-NAMES = {"D9": "X", "D10": "Y", "D11": "Z", "D12": "Z (GRBL 1.1 / some shields)"}
+from stage_link import open_link
+
+# Shield header each pin serves. Which axis a switch really belongs to is
+# found by homing.py (the wiring may not follow the header labels).
+NAMES = {"D9": "X hdr", "D10": "Y hdr", "D11": "Z hdr", "D12": "Z hdr (GRBL 1.1)"}
 
 
 def parse(line):
@@ -41,8 +41,7 @@ class Printer:
 
     def show(self, levels):
         stamp = f"{time.time() - self.t0:7.2f}s"
-        cells = []
-        changed = []
+        cells, changed = [], []
         for pin, level in levels.items():
             state = "open  " if level else "CLOSED"
             mark = ""
@@ -60,41 +59,6 @@ class Printer:
         self.last = levels
 
 
-def via_server(printer, deadline):
-    req = urllib.request.urlopen(SERVER + "/stage/events", timeout=30)
-    # ask for the current state once the stream is open
-    urllib.request.urlopen(urllib.request.Request(
-        SERVER + "/stage/send", data=json.dumps({"line": "LS"}).encode(),
-        headers={"Content-Type": "application/json"}, method="POST"), timeout=5)
-    kind = None
-    for raw in req:
-        line = raw.decode(errors="replace").rstrip("\r\n")
-        if line.startswith("event: "):
-            kind = line[7:]
-        elif line.startswith("data: ") and kind in ("line", "replay"):
-            data = line[6:]
-            if data.startswith("LS "):
-                printer.show(parse(data))
-        if deadline and time.time() > deadline:
-            return
-
-
-def direct(printer, deadline):
-    import serial
-    from find_arduino import BAUD, find_arduino
-    port = find_arduino()
-    print(f"(ui/server.py not running: opening {port} directly; the Uno resets)")
-    with serial.Serial(port, BAUD, timeout=0.2) as s:
-        ready = False
-        while not deadline or time.time() < deadline:
-            line = s.readline().decode(errors="replace").strip()
-            if line == "READY" and not ready:
-                ready = True
-                s.write(b"LS\n")    # boot banner lines can be garbled; re-ask
-            elif line.startswith("LS ") and ready:
-                printer.show(parse(line))
-
-
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -102,18 +66,23 @@ def main():
     p.add_argument("--log", default=None, help="also append the output to this file")
     args = p.parse_args()
 
-    print("Limit switches: 1 = open, 0 = CLOSED (switch to GND). "
-          "Toggle each one; changes are marked <<.  Ctrl+C to stop.")
+    link = open_link()
+    print(f"Limit switches ({link.description}): 1 = open, 0 = CLOSED (switch to "
+          "GND). Toggle each one; changes are marked <<.  Ctrl+C to stop.")
     printer = Printer(args.log)
     deadline = time.time() + args.duration if args.duration else None
+    link.send("LS")
     try:
-        try:
-            urllib.request.urlopen(SERVER + "/stage/status", timeout=2)
-        except OSError:
-            return direct(printer, deadline)
-        via_server(printer, deadline)
+        while not deadline or time.time() < deadline:
+            try:
+                line = link.wait_for(lambda l: l.startswith("LS "), timeout=1.0)
+            except TimeoutError:
+                continue
+            printer.show(parse(line))
     except KeyboardInterrupt:
         pass
+    finally:
+        link.close()
 
 
 if __name__ == "__main__":

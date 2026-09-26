@@ -27,7 +27,8 @@ by `ui/server.py` and `ui/start.ps1`; they remain in git history.
 | shield | Arduino CNC Shield V3 |
 | drivers | 3 × DRV8825 (all share enable pin 8, active LOW). Current limit: I = 2 × Vref |
 | pins (as used by `xyz1.ino`) | X step 3 / dir 6, Y step 2 / dir 5, Z step 4 / dir 7, enable 8 |
-| limit switches | X → D9, Y → D10, Z → D11; normally open, to GND, with pull-ups (1 = open, 0 = pressed). D12 is read too but unused |
+| limit switches | one per axis, normally open, to GND, with pull-ups (1 = open, 0 = pressed), on D9 / D10 / D11 (D12 is read too, unused). Which pin belongs to which axis is found by `homing.py`, not assumed: X → D9, on its − side. The far end of each axis is a fixed 12 mm from its switch |
+| steps per mm | 400: 200-step motors, full step (no microstep jumpers), 0.5 mm lead screw. Measured on Y with a 400-step move, which turned the shaft exactly 2 revolutions |
 | baud | 115200 |
 
 The pins follow the common CNC Shield V3 layout, with X and Y swapped: the
@@ -61,10 +62,62 @@ pick. Only one program can hold COM4 at a time. Before running
 - **Motor toggle:** "Motors released when idle (quiet)" by default; see
   [Driver power](#driver-power).
 
+## Homing
+
+```powershell
+.\.venv\Scripts\python.exe xyz_stage\homing.py              # home all axes (asks about any axis not yet known)
+.\.venv\Scripts\python.exe xyz_stage\homing.py --discover   # redo the questions, e.g. after rewiring
+.\.venv\Scripts\python.exe xyz_stage\homing.py --axes Y Z   # only some axes
+```
+
+Run it in a terminal you can type into: discovery asks questions.
+
+**Discovery**, the first time for an axis:
+1. It asks for steps per mm (400 here).
+2. It moves the axis +100 steps. If a switch closes, that switch belongs to
+   this axis and + is towards it.
+3. Otherwise you say whether it moved **t**owards or **a**way from its switch,
+   or **r**epeat with a 400-step move if you couldn't tell.
+4. It then seeks towards the switch; whichever pin closes is this axis's. If
+   a switch sat pressed at the start and opens during the first move, that
+   also identifies it.
+
+The result is saved to `homing.json` before homing starts: pin, direction
+towards the switch, steps/mm, travel. Once saved, homing runs without
+questions, and stops if a different switch closes than the saved one (a
+sign that the wiring or mechanics changed; rerun with `--discover`).
+
+**Homing an axis:**
+1. Fast seek to the switch (0.25 mm/s at 1.6 ms/step, 400 steps/mm).
+2. Back off until the switch opens, then 100 steps more.
+3. Slow approach at 6 ms/step.
+4. That trigger point becomes **0**, with soft limits 0..12 mm on the side
+   away from the switch (`HOMED` command, saved in EEPROM).
+5. Back off until the switch opens, then park 50 steps further.
+
+After homing, jogs can't leave the 12 mm range.
+
+**Switch hysteresis:** the switches open noticeably behind where they close.
+A fixed 100-step back-off wasn't always enough on X, so the script now backs
+off in 50-step chunks until the switch opens, up to 2 mm, and records how far
+that took (`hysteresis_steps`).
+
+**Firmware commands used:**
+- `SEEK X -500 [delay_us]`: move up to 500 steps, ignoring soft limits,
+  stopping when a switch that was open at the start closes. The reply is
+  `SEEK X <moved> HIT D9` / `NOHIT` / `ABORT`. **Any byte arriving mid-move
+  aborts it**, so don't use the UI while homing runs.
+- `HOMED X min max`: the current position becomes 0, with limits
+  [min, max].
+
+The script checks every reply strictly. If a `SEEK` reply arrives damaged,
+it works the result out from `P` (position change) and `LS` (which switch is
+now closed).
+
 ## Limit switches
 
-The firmware **reports** the switches but doesn't act on them yet: nothing
-stops a move at a switch.
+The firmware **reports** the switches. Only `SEEK` (homing) stops at them; a
+normal jog doesn't.
 
 - **When it reports:** it sends `LS D9=1 D10=1 D11=1 D12=1` at boot, in reply
   to the `LS` command, and whenever a pin changes and stays changed for
@@ -142,6 +195,52 @@ The EEPROM couldn't be backed up. The Uno's bootloader returns flash when
 asked for EEPROM.
 
 ## Log
+
+### 2026-09-26 — homing: X done, Y switch detached, Z not started — OPEN
+
+**Steps/mm.** Microstepping isn't in the firmware; it's set by jumpers. A
+400-step move on Y turned the shaft 2 full revolutions, so it's full step.
+With the 0.5 mm lead that's 400 steps/mm.
+
+**Garbled replies (fixed).** At first, about half of all `SEEK` replies
+never reached the script.
+- **Cause:** logging every line showed they were arriving with characters
+  missing (`SEK Y 0 NOHIT`, `SEEKY 0 NOHIT`, `SEEK  0 NHIT`), always on the
+  line printed right after the drivers were switched off. `LS` and `P`
+  (no driver switching) were never damaged.
+- **Board, not server:** it happened on a direct connection too (2 of 10), so
+  the damage happens on the board, most likely the transient from disabling
+  the DRV8825s.
+- **Firmware fix:** `Serial.flush()` before switching the drivers, and 50 ms of
+  silence after switching them off. After the fix, 40 of 40 direct and 15 of
+  15 through the server came back clean.
+- **Script safeguard:** it also rebuilds a damaged reply from `P` and `LS`. That
+  fallback fired once since, during the long Y seek below.
+
+**X: homed.**
+- **First run:** discovery found D9 after seeking −2667 steps (you answered
+  "away" for +). That run then stopped: D9 was still closed after a fixed
+  100-step back-off.
+- **Second run:** with back-off-until-open, X homed from the saved entry:
+  zero at the D9 trigger, limits 0..4800, hysteresis 50 steps (0.12 mm),
+  parked at 200.
+
+**Y: its switch was detached.** You answered "towards" for +, so the seek ran
+its full 6360-step limit (15.9 mm) with nothing to stop it, and stalled the
+motor against the end for a few seconds. The position counter (13708) no
+longer matches where Y really is. After you reattached the switch, Y was
+moved 400 steps (1 mm) back: no switch was closed before or after, even
+though Y had been at the end stop. So the reattached switch isn't reached
+before the hard stop.
+
+**Next:**
+1. Mount Y's switch where the carriage presses it before the hard stop, and
+   check it with `limit_switches.py` by hand.
+2. Run `homing.py --axes Y Z`.
+
+**Lesson:** a seek towards a switch has no protection if the switch is
+missing; it only stops at its step limit (1.2 × travel + slack). A later
+improvement could stop on a stall (e.g. with the camera).
 
 ### 2026-09-26 — limit switches checked by hand — WORKING
 

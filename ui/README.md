@@ -82,6 +82,11 @@ Projector calls return once the change is on screen.
 
 ## Stage
 
+- **Homing** is done by `xyz_stage/homing.py` (see
+  [xyz_stage](../xyz_stage/README.md#homing)). It goes through this server,
+  and its moves show up in the page, including the new soft limits
+  (`CAL X DONE 0 4800`, which is 12 mm). **Don't click anything that sends
+  a stage command while it runs:** any byte aborts a homing move.
 - **Motors between moves** (left column): **Release** (`D`, the default, quiet)
   or **Hold** (`E`, holding torque, the DRV8825s squeal).
   - **Every move is powered and counted in both modes.** The only difference

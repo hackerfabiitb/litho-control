@@ -209,6 +209,38 @@ void processCommand(String line) {
     return;
   }
 
+  // SEEK X -500 [delay_us] — homing move: step up to |delta| steps, ignoring
+  // soft limits, and stop as soon as a limit switch that was open at the start
+  // closes, or when any byte arrives (abort). Replies "SEEK X <moved> HIT D10",
+  // "... NOHIT" or "... ABORT", then POS and DONE. Checked before the switch
+  // below: 'S' there sets the speed.
+  if (line.startsWith("SEEK ")) {
+    char axis = 0; long delta = 0; int delayUs = stepDelay;
+    int n = sscanf(line.c_str() + 5, " %c %ld %d", &axis, &delta, &delayUs);
+    int i = axisIdx(axis);
+    if (n < 2 || i < 0 || delayUs < 20) {
+      Serial.println("ERR SEEK: need axis, steps and optional delay_us >= 20");
+      return;
+    }
+    seekAxis(i, delta, delayUs);
+    return;
+  }
+
+  // HOMED X min max — the current position of X is its home: make it 0 and
+  // set its soft limits to [min, max] (min < max; 0 0 = zero only, no
+  // limits). Checked before the switch below: 'H' there zeroes every axis.
+  if (line.startsWith("HOMED ")) {
+    char axis = 0; long mn = 0, mx = 0;
+    int n = sscanf(line.c_str() + 6, " %c %ld %ld", &axis, &mn, &mx);
+    int i = axisIdx(axis);
+    if (n != 3 || i < 0 || mn > mx) {
+      Serial.println("ERR HOMED: need axis, min and max (min <= max)");
+      return;
+    }
+    setAxisHome(i, mn, mx);
+    return;
+  }
+
   // UNDO — revert position to before last motion command (no motors move)
   if (line == "UNDO") {
     memcpy(pos, prevPos, sizeof(pos));
@@ -557,8 +589,15 @@ void moveAbsolute(long tx, long ty, long tz) {
   Serial.println("DONE");
 }
 
+// Switching the drivers on or off disturbs the serial line: characters sent
+// around that moment get dropped (seen 2026-09-26: "SEEKY 0 NOHIT",
+// "SEEK  0 NHIT" in 2 of 10 replies). So finish sending before switching,
+// and stay quiet for SWITCH_QUIET_MS afterwards.
+const unsigned long SWITCH_QUIET_MS = 50;
+
 void driversEnable() {
   if (driversOn) return;
+  Serial.flush();
   digitalWrite(sys_en, LOW);
   driversOn = true;
   delay(2);  // let the outputs and coil current come up before the first step
@@ -567,8 +606,10 @@ void driversEnable() {
 void driversIdle() {
   if (holdWhenIdle || !driversOn) return;
   delay(20);  // let the rotor settle on the last step before releasing it
+  Serial.flush();
   digitalWrite(sys_en, HIGH);
   driversOn = false;
+  delay(SWITCH_QUIET_MS);
 }
 
 void stepAxisTo(int ax, long target) {
@@ -581,6 +622,100 @@ void stepAxisTo(int ax, long target) {
     delayMicroseconds(stepDelay);
     pos[ax] += (target > pos[ax]) ? 1 : -1;
   }
+}
+
+// ============================================================
+//  Homing
+// ============================================================
+
+// Switches closed now, as a bitmask over SW_PINS (pull-ups: LOW = closed).
+byte closedSwitches() {
+  return (~readSwitches()) & 0x0F;
+}
+
+void seekAxis(int ax, long delta, int delayUs) {
+  memcpy(prevPos, pos, sizeof(pos));
+  int dir = (delta >= 0) ? 1 : -1;
+  long steps = labs(delta);
+  // Switches already closed are ignored for the whole move, so an axis
+  // parked on its switch can back off it.
+  byte ignore = closedSwitches();
+  byte hit = 0;
+  byte streak = 0;     // consecutive readings with a new closure: rejects noise
+  long moved = 0;
+  bool aborted = false;
+
+  driversEnable();
+  digitalWrite(DIR_PINS[ax], dir > 0 ? HIGH : LOW);
+  delayMicroseconds(2);
+  while (moved < steps) {
+    // Any byte from the host aborts: the host can't otherwise interrupt a
+    // blocking move (e.g. Ctrl+C in the homing script).
+    if (Serial.available()) { Serial.read(); aborted = true; break; }
+    byte fresh = closedSwitches() & ~ignore;
+    if (fresh) {
+      if (++streak >= 3) { hit = fresh; break; }
+    } else {
+      streak = 0;
+    }
+    digitalWrite(STEP_PINS[ax], HIGH);
+    delayMicroseconds(delayUs);
+    digitalWrite(STEP_PINS[ax], LOW);
+    delayMicroseconds(delayUs);
+    pos[ax] += dir;
+    moved++;
+  }
+  driversIdle();
+  savePosition();
+
+  Serial.print("SEEK "); Serial.print("XYZ"[ax]);
+  Serial.print(" "); Serial.print(moved * dir);
+  if (hit) {
+    Serial.print(" HIT");
+    for (int i = 0; i < 4; i++)
+      if (hit & (1 << i)) { Serial.print(" D"); Serial.print(SW_PINS[i]); }
+    Serial.println();
+  } else {
+    Serial.println(aborted ? " ABORT" : " NOHIT");
+  }
+  swReported = swCandidate = readSwitches();   // no stale change report after
+  sendPos();
+  Serial.println("DONE");
+}
+
+void setAxisHome(int ax, long mn, long mx) {
+  pos[ax] = 0;
+  prevPos[ax] = 0;
+  axisCalibrated[ax] = (mn < mx);
+  if (axisCalibrated[ax]) { limMin[ax] = mn; limMax[ax] = mx; }
+  isCalibrated = axisCalibrated[0] && axisCalibrated[1] && axisCalibrated[2];
+
+  byte calMask = 0;
+  for (int i = 0; i < 3; i++) if (axisCalibrated[i]) calMask |= (1 << i);
+  EEPROM.write(0, MAGIC_VALID);
+  EEPROM.write(37, calMask);
+  EEPROM.put(13 + ax * 8,     limMin[ax]);
+  EEPROM.put(13 + ax * 8 + 4, limMax[ax]);
+  savePosition();
+
+  // Same lines as the CAL flow, so the UI picks the new limits up.
+  if (axisCalibrated[ax]) {
+    Serial.print("CAL "); Serial.print("XYZ"[ax]);
+    Serial.print(" DONE "); Serial.print(limMin[ax]);
+    Serial.print(" "); Serial.println(limMax[ax]);
+  } else {
+    Serial.print("CAL CLEAR "); Serial.println("XYZ"[ax]);
+  }
+  Serial.print("CAL INFO");
+  for (int i = 0; i < 3; i++) {
+    Serial.print(" "); Serial.print(limMin[i]);
+    Serial.print(" "); Serial.print(limMax[i]);
+  }
+  Serial.println();
+  Serial.println(isCalibrated ? "CALIBRATED" : "UNCALIBRATED");
+  sendPos();
+  sendLimits();
+  Serial.print("HOMED "); Serial.println("XYZ"[ax]);
 }
 
 // ============================================================

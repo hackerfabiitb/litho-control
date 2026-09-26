@@ -62,8 +62,15 @@
   `E` holds them powered at idle, which squeals. Keep that behaviour in any
   firmware change. When the user allows a test move, keep it tiny (they chose
   ±10 steps) and return to the start position.
-- Limit switches: X → D9, Y → D10, Z → D11 (normally open to GND, pull-ups;
-  1 = open, 0 = pressed). Each axis's two ends share one pin. The firmware
-  only reports them (`LS` lines); nothing stops at them yet.
+- Limit switches: one per axis on D9/D10/D11 (normally open to GND, pull-ups;
+  1 = open, 0 = pressed). Don't assume which pin is which axis: that's in
+  `xyz_stage/homing.json`, found by `homing.py`. The far end of each axis is
+  a fixed 12 mm away; 400 steps/mm (full step, 0.5 mm lead).
+- Only `SEEK` (homing) stops at switches. It aborts on any byte received, so
+  send nothing to the stage while homing runs. A seek towards a missing or
+  detached switch runs until its step limit and stalls at the end stop.
+- The line printed right after the drivers switch off used to lose
+  characters. The firmware now flushes and pauses 50 ms around driver
+  switching; keep that. Parse replies strictly, never loosely.
 - Flash with the IDE's bundled arduino-cli (path in `xyz_stage/README.md`).
   Back up the existing flash with avrdude before overwriting a sketch.
