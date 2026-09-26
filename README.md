@@ -8,7 +8,7 @@ a camera watches it, and an XYZ stage moves the sample.
 | [`camera/`](camera/README.md) | Basler acA1920-40um (USB3, mono) | live view with DLP flicker removed; flicker measurement |
 | [`projector/`](projector/README.md) | TI DLP471TPEVM over HDMI + USB | test patterns, camera-to-DMD calibration, DMD fault scan |
 | [`xyz_stage/`](xyz_stage/README.md) | Arduino Uno + CNC Shield V3, 3 × DRV8825, 3 steppers (COM4) | `xyz1` firmware (drivers powered only while moving) |
-| [`ui/`](ui/README.md) | all three | the control page: stage control (Web Serial), projector display at native resolution, and side-by-side PROJECTOR mirror and deflickered CAMERA panes, served by `ui/server.py` |
+| [`ui/`](ui/README.md) | all three | the control page: stage control (through the server), projector display at native resolution, and side-by-side PROJECTOR mirror and deflickered CAMERA panes, served by `ui/server.py` |
 
 **To run everything:** `.\ui\start.ps1`, then open `http://localhost:8765`.
 

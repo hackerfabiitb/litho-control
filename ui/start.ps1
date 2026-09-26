@@ -12,5 +12,5 @@ $browser = @(
     "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
     "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $browser) { throw "Neither Chrome nor Edge found (Web Serial needs one)" }
+if (-not $browser) { throw "Neither Chrome nor Edge found" }
 Start-Process $browser -ArgumentList "--new-window", "http://localhost:8765"

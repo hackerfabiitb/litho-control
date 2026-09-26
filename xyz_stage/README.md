@@ -9,7 +9,7 @@ served by `ui/server.py` together with the projector and camera panes.
 | file | what it is | origin |
 | --- | --- | --- |
 | `firmware/xyz1/xyz1.ino` | stage firmware: serial protocol, soft limits, EEPROM position memory | litho-ui, changed (driver power) |
-| `litho-ui_README.md` | original README: full serial protocol, EEPROM layout, UI features | litho-ui |
+| `litho-ui_README.md` | original README: full serial protocol, EEPROM layout, UI features. Its calibration card, Undo, Set home, Zero and state import were removed from the UI on 2026-09-26 (they fight the homing); the firmware still accepts those commands | litho-ui |
 | `XYZ_Stage_Controller_Manual.docx` | original user manual | litho-ui |
 | `find_arduino.py` | finds the Arduino's COM port, and can check which firmware is on it | new |
 | `firmware/backup/` | the Uno's flash before `xyz1` was loaded | new |

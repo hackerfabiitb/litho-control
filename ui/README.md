@@ -23,10 +23,13 @@ Then:
 
 | area | shows |
 | --- | --- |
+| **left column** | position, soft limits, step size, speed, motors between moves, a state snapshot export, and the **serial log** with a raw-command box at the bottom |
 | **PROJECTOR** pane | a screen capture of the projector's display, 1280 px wide, about 5 fps. It shows what the projector is really showing, including the desktop or anything that pops up over the pattern |
 | **CAMERA** pane | the deflickered camera feed at full resolution, 1936×1216. The header shows fps in → shown, the frame mean against the keep cutoff, and how many frames were forced |
 | controls under the panes | exposure (µs), keep ≥ (fraction of the recent top), max hold (s); **Apply** changes them live |
-| rest of the page | stage jog, calibration and focus, from litho-ui (see [xyz_stage](../xyz_stage/README.md)) |
+| under the panes | **Jog** with **Z focus** (set / go / autofocus sweep) beside it, then go to absolute / relative, and **go to zero** per axis. Zero is the homed end (see [xyz_stage](../xyz_stage/README.md#homing)) |
+
+Text is white at 1.5× litho-ui's sizes, laid out for a 1920×1080 screen.
 
 ## Why a Python server, not a JavaScript one
 
@@ -116,6 +119,33 @@ Projector calls return once the change is on screen.
 - **Only one server at a time**, because it uses port 8765.
 
 ## Log
+
+### 2026-09-26 — litho-ui leftovers removed; log moved left; larger white text
+
+- **Removed**, because they rewrite the position or the soft limits and so
+  break homing (`homing.py` owns zero and the limits now):
+  - the Calibration card (`CAL ENDP`: the midpoint of two jogged extremes
+    became 0) and its Clear All (`CAL CLEAR`);
+  - state Import (`CAL MANUAL`, which recentred every axis) and the
+    browser-storage state that fed it. Export stays, as a record only;
+  - **Set home** (`H`), **Zero** (`Z X`) and **Undo** (`UNDO`): they change
+    the position counter without moving, so the limits stop matching the
+    end stops.
+- **Fixed:**
+  - "Home (go to calibrated centre)" is now **Go to zero** (the homed end).
+  - The speed slider sent `S` for every pixel of a drag, and restored a
+    value the firmware never got. It now sends once on release and shows the
+    firmware's `SPEED` reply.
+  - Autofocus clamped Z to 0..0 when Z had no limits.
+  - Two elements shared the id `calBadge`.
+  - Dead CSS (the old calibration modal, screen picker, motor toggle) and
+    "Web Serial" wording were removed.
+- **Layout:** the serial log moved from the right column into the left one,
+  under Saved State. Z Focus sits to the right of Jog. The text is white
+  (it was #666/#444 grey) and 1.5× larger.
+- **Checked:** `node --check` on the script, and a headless Edge screenshot
+  at 1920×1080 against the running server. Everything fits without the left
+  column scrolling.
 
 ### 2026-09-25 — built
 

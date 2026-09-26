@@ -15,9 +15,10 @@
     --bg3:      #242424;
     --border:   #2a2a2a;
     --border2:  #383838;
-    --text:     #e8e8e8;
-    --muted:    #666;
-    --dim:      #444;
+    --text:     #ffffff;
+    --muted:    #ffffff;
+    --dim:      #d8d8d8;
+    --hint:     #9a9a9a;   /* input placeholders only */
     --accent:   #00e5a0;
     --accent2:  #00b87a;
     --warn:     #f0a500;
@@ -27,13 +28,13 @@
     --sans:     'IBM Plex Sans', sans-serif;
   }
 
-  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 20px; }
 
   /* ── Layout ── */
   .shell {
     display: grid;
     grid-template-rows: 44px 1fr;
-    grid-template-columns: 220px 1fr 260px;
+    grid-template-columns: 400px 1fr;
     height: 100vh;
     gap: 0;
   }
@@ -50,7 +51,7 @@
   }
   .topbar-title {
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 17px;
     font-weight: 600;
     letter-spacing: 0.2em;
     text-transform: uppercase;
@@ -64,10 +65,10 @@
   }
   .status-dot.on  { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
   .status-dot.err { background: var(--danger); }
-  .status-text { font-size: 11px; color: var(--muted); letter-spacing: 0.05em; }
+  .status-text { font-size: 17px; color: var(--muted); letter-spacing: 0.05em; }
   .conn-btn {
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 17px;
     font-weight: 500;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -90,7 +91,8 @@
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-y: auto;
+    min-height: 0;
   }
 
   /* ── Center Panel ── */
@@ -129,7 +131,7 @@
     background: var(--bg1);
   }
   .cam-title {
-    font-size: 9px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 0.2em;
     text-transform: uppercase;
@@ -144,7 +146,7 @@
   }
   .cam-dot.on  { background: var(--accent); box-shadow: 0 0 5px var(--accent); }
   .cam-dot.err { background: var(--danger); }
-  .cam-status-text { font-size: 10px; color: var(--muted); }
+  .cam-status-text { font-size: 15px; color: var(--muted); }
   .pane-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -154,7 +156,7 @@
   .pane { display: flex; flex-direction: column; background: var(--bg1); min-width: 0; }
   .pane-label {
     display: flex; justify-content: space-between; gap: 8px;
-    padding: 4px 10px; font-size: 9px; letter-spacing: 0.15em;
+    padding: 4px 10px; font-size: 14px; letter-spacing: 0.15em;
     color: var(--muted); border-bottom: 1px solid var(--border);
     white-space: nowrap; overflow: hidden;
   }
@@ -184,13 +186,13 @@
     justify-content: center;
     gap: 6px;
     color: var(--dim);
-    font-size: 11px;
+    font-size: 17px;
     text-align: center;
     padding: 12px;
     pointer-events: none;
   }
   .cam-placeholder-icon {
-    font-size: 28px;
+    font-size: 42px;
     color: var(--border2);
     margin-bottom: 4px;
   }
@@ -208,18 +210,18 @@
     gap: 6px;
   }
   .cam-ctrl-label {
-    font-size: 9px;
+    font-size: 14px;
     color: var(--muted);
     letter-spacing: 0.12em;
     white-space: nowrap;
   }
   .cam-ctrl-unit {
-    font-size: 9px;
+    font-size: 14px;
     color: var(--dim);
   }
   .cam-apply-btn {
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: 15px;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     padding: 4px 12px;
@@ -233,21 +235,12 @@
   }
   .cam-apply-btn:hover { border-color: var(--accent); color: var(--accent); }
   .cam-sep { flex: 1; }
-  .cam-err-text { font-size: 10px; color: var(--danger); display: none; }
-
-  /* ── Right Panel ── */
-  .right {
-    grid-row: 2;
-    border-left: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
+  .cam-err-text { font-size: 15px; color: var(--danger); display: none; }
 
   /* ── Section headers ── */
   .section-hdr {
     padding: 10px 14px 8px;
-    font-size: 9px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 0.2em;
     text-transform: uppercase;
@@ -274,7 +267,7 @@
     gap: 8px;
   }
   .pos-axis {
-    font-size: 10px;
+    font-size: 15px;
     font-weight: 600;
     color: var(--muted);
     letter-spacing: 0.1em;
@@ -293,7 +286,7 @@
     width: 0%;
   }
   .pos-val {
-    font-size: 11px;
+    font-size: 17px;
     font-weight: 500;
     color: var(--text);
     text-align: right;
@@ -307,11 +300,11 @@
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
-  .step-label { font-size: 9px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 8px; }
+  .step-label { font-size: 14px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 8px; }
   .step-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 8px; }
   .step-btn {
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: 15px;
     padding: 5px 2px;
     border: 1px solid var(--border);
     border-radius: 2px;
@@ -324,10 +317,10 @@
   .step-btn:hover { border-color: var(--border2); color: var(--text); }
   .step-btn.on { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.05); }
   .custom-step-row { display: flex; gap: 6px; align-items: center; }
-  .custom-step-row label { font-size: 9px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
+  .custom-step-row label { font-size: 14px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
   .tinput {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: 18px;
     background: var(--bg2);
     border: 1px solid var(--border);
     border-radius: 2px;
@@ -338,7 +331,7 @@
     transition: border-color 0.15s;
   }
   .tinput:focus { border-color: var(--accent); }
-  .tinput::placeholder { color: var(--dim); }
+  .tinput::placeholder { color: var(--hint); }
 
   /* ── Speed ── */
   .speed-panel {
@@ -346,56 +339,21 @@
     flex-shrink: 0;
   }
   .speed-row { display: flex; align-items: center; gap: 10px; }
-  .speed-row label { font-size: 9px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
+  .speed-row label { font-size: 14px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
   .speed-row input[type=range] {
     flex: 1;
     accent-color: var(--accent);
     cursor: pointer;
   }
-  .speed-val { font-size: 10px; color: var(--text); min-width: 50px; text-align: right; }
+  .speed-val { font-size: 15px; color: var(--text); min-width: 50px; text-align: right; }
 
   /* ── Idle mode (Release / Hold) ── */
   .idle-panel { padding: 12px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
   .idle-seg { display: flex; gap: 6px; margin: 6px 0; }
   .idle-seg .hz-btn { flex: 1; display: flex; flex-direction: column; align-items: center;
-                      gap: 2px; padding: 6px 4px; font-size: 11px; }
-  .idle-seg .hz-btn small { font-size: 9px; color: var(--dim); }
+                      gap: 2px; padding: 6px 4px; font-size: 17px; }
+  .idle-seg .hz-btn small { font-size: 14px; color: var(--dim); }
   .idle-seg .hz-btn.active { border-color: var(--accent); color: var(--accent); }
-
-  /* ── Motor toggle ── */
-  .motor-panel {
-    padding: 10px 14px;
-    border-top: 1px solid var(--border);
-    margin-top: auto;
-    flex-shrink: 0;
-  }
-  .motor-toggle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 10px;
-    color: var(--muted);
-    cursor: pointer;
-    user-select: none;
-  }
-  .toggle-track {
-    width: 28px; height: 14px;
-    background: var(--bg3);
-    border: 1px solid var(--border2);
-    border-radius: 7px;
-    position: relative;
-    transition: background 0.2s;
-  }
-  .toggle-track.on { background: rgba(0,229,160,0.2); border-color: var(--accent); }
-  .toggle-thumb {
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    background: var(--muted);
-    position: absolute;
-    top: 1px; left: 1px;
-    transition: left 0.2s, background 0.2s;
-  }
-  .toggle-track.on .toggle-thumb { left: 15px; background: var(--accent); }
 
   /* ── Jog pad ── */
   .jog-card {
@@ -404,12 +362,12 @@
     border-radius: 3px;
     padding: 20px;
   }
-  .jog-card-title { font-size: 9px; color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 20px; }
+  .jog-card-title { font-size: 14px; color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 20px; }
   .jog-outer { display: flex; gap: 24px; align-items: center; justify-content: center; }
   .jog-xy { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 4px; }
   .jbtn {
     font-family: var(--mono);
-    font-size: 18px;
+    font-size: 27px;
     border: 1px solid var(--border2);
     border-radius: 3px;
     background: var(--bg2);
@@ -424,14 +382,14 @@
   .jbtn.center-cell {
     background: var(--bg3);
     border-color: var(--border);
-    font-size: 9px;
+    font-size: 14px;
     color: var(--muted);
     letter-spacing: 0.08em;
     cursor: default;
   }
   .jbtn.center-cell:hover { border-color: var(--border); color: var(--muted); background: var(--bg3); transform: none; }
   .jog-z { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-  .jog-z-label { font-size: 9px; color: var(--muted); letter-spacing: 0.12em; margin-bottom: 2px; }
+  .jog-z-label { font-size: 14px; color: var(--muted); letter-spacing: 0.12em; margin-bottom: 2px; }
   .jbtn-z { width: 52px; height: 52px; }
   .jog-z-track {
     width: 1px; height: 36px;
@@ -439,7 +397,10 @@
     margin: 2px auto;
   }
   .kbd-row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
-  .kbd { font-size: 9px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 2px; padding: 2px 6px; color: var(--muted); }
+  .kbd { font-size: 14px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 2px; padding: 2px 6px; color: var(--muted); }
+
+  /* ── Jog + Z focus side by side ── */
+  .jog-row { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: start; }
 
   /* ── Goto / Relative cards ── */
   .twoCol { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -449,14 +410,14 @@
     border-radius: 3px;
     padding: 16px;
   }
-  .mcard-title { font-size: 9px; color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 12px; }
+  .mcard-title { font-size: 14px; color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 12px; }
   .axis-row { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
-  .axis-lbl { font-size: 10px; color: var(--muted); font-weight: 600; }
+  .axis-lbl { font-size: 15px; color: var(--muted); font-weight: 600; }
   .go-btn {
     width: 100%;
     margin-top: 10px;
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 17px;
     font-weight: 500;
     letter-spacing: 0.1em;
     padding: 7px;
@@ -472,7 +433,7 @@
   .rel-row { display: flex; gap: 6px; margin-bottom: 8px; }
   .rel-sel {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: 18px;
     background: var(--bg2);
     border: 1px solid var(--border);
     border-radius: 2px;
@@ -490,11 +451,11 @@
     border-radius: 3px;
     padding: 16px;
   }
-  .hzCard-title { font-size: 9px; color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 12px; }
+  .hzCard-title { font-size: 14px; color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 12px; }
   .hz-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .hz-btn {
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: 15px;
     padding: 7px 4px;
     border: 1px solid var(--border);
     border-radius: 2px;
@@ -510,12 +471,12 @@
   .hz-btn.active { border-color: var(--blue); color: var(--blue); }
 
   /* ── Log ── */
-  .log-wrap { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  .log-wrap { flex: 1 1 150px; min-height: 150px; overflow: hidden; display: flex; flex-direction: column; border-top: 1px solid var(--border); }
   .log {
     flex: 1;
     overflow-y: auto;
     padding: 10px 12px;
-    font-size: 11px;
+    font-size: 17px;
     line-height: 1.6;
     display: flex;
     flex-direction: column;
@@ -542,7 +503,7 @@
   }
   .raw-send {
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: 15px;
     padding: 4px 10px;
     border: 1px solid var(--border2);
     border-radius: 2px;
@@ -561,9 +522,9 @@
     flex-shrink: 0;
   }
   .limits-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-  .limits-title { font-size: 9px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; }
+  .limits-title { font-size: 14px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; }
   .cal-badge {
-    font-size: 8px;
+    font-size: 12px;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--dim);
@@ -572,67 +533,16 @@
     border-radius: 2px;
   }
   .cal-badge.ok { color: var(--accent); border-color: rgba(0,229,160,0.3); }
-  .limit-row { display: flex; justify-content: space-between; font-size: 10px; color: var(--dim); margin-bottom: 2px; }
+  .limit-row { display: flex; justify-content: space-between; font-size: 15px; color: var(--dim); margin-bottom: 2px; }
   .limit-row span:last-child { color: var(--muted); }
 
-  /* scrollbar handled per-panel above */
-
-  /* ════════════════════════════════════════════════
-     CALIBRATION MODAL
-  ════════════════════════════════════════════════ */
-  .cal-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: transparent;
-    z-index: 1000;
-    pointer-events: none;
-    align-items: flex-start;
-    justify-content: flex-end;
-    padding: 50px 16px 16px 0;
-  }
-  .cal-overlay.open { display: flex; }
-
-  .cal-modal {
-    pointer-events: all;
-    background: var(--bg1);
-    border: 1px solid var(--border2);
-    border-radius: 4px;
-    width: 400px;
-    max-height: calc(100vh - 66px);
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.8), 0 0 0 1px var(--border);
-  }
-  .cal-modal::-webkit-scrollbar { width: 4px; }
-  .cal-modal::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-  .cal-header {
-    display: flex;
-    align-items: center;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-    background: var(--bg1);
-    position: sticky;
-    top: 0;
-    z-index: 1;
-  }
-  .cal-title {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--accent);
-    flex: 1;
-  }
+  /* ── Modal controls (projector dialog) ── */
   .cal-close-btn {
     background: transparent;
     border: none;
     color: var(--muted);
     cursor: pointer;
-    font-size: 16px;
+    font-size: 24px;
     padding: 2px 6px;
     border-radius: 2px;
     font-family: var(--mono);
@@ -640,44 +550,9 @@
     transition: color 0.15s;
   }
   .cal-close-btn:hover { color: var(--text); }
-
-  .cal-body { padding: 18px; display: flex; flex-direction: column; gap: 16px; }
-
-  /* Axis status rows */
-  .cal-axes { display: flex; flex-direction: column; gap: 6px; }
-  .cal-axis-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    transition: border-color 0.2s;
-  }
-  .cal-axis-row.active-row { border-color: rgba(240,165,0,0.4); }
-  .cal-axis-letter {
-    font-size: 13px;
-    font-weight: 600;
-    width: 14px;
-    flex-shrink: 0;
-  }
-  .cal-axis-letter.X { color: #ff6b6b; }
-  .cal-axis-letter.Y { color: #69db7c; }
-  .cal-axis-letter.Z { color: #74c0fc; }
-  .cal-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--border2);
-    flex-shrink: 0;
-    transition: background 0.3s;
-  }
-  .cal-dot.ok     { background: var(--accent); box-shadow: 0 0 4px var(--accent); }
-  .cal-dot.active { background: var(--warn);   box-shadow: 0 0 6px var(--warn); animation: blink 0.9s infinite; }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-  .cal-axis-range { flex: 1; font-size: 10px; color: var(--dim); font-variant-numeric: tabular-nums; }
   .cal-axis-btn {
     font-family: var(--mono);
-    font-size: 9px;
+    font-size: 14px;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     padding: 4px 10px;
@@ -691,11 +566,9 @@
     flex-shrink: 0;
   }
   .cal-axis-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-  .cal-axis-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-
   .cal-all-btn {
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: 15px;
     letter-spacing: 0.15em;
     text-transform: uppercase;
     padding: 8px;
@@ -709,144 +582,7 @@
     width: 100%;
   }
   .cal-all-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-  .cal-all-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-
-  /* Active calibration section */
-  .cal-active-section {
-    display: none;
-    flex-direction: column;
-    gap: 12px;
-    padding: 16px;
-    background: var(--bg2);
-    border: 1px solid rgba(240,165,0,0.35);
-    border-radius: 3px;
-  }
-  .cal-active-section.show { display: flex; }
-  .cal-active-hdr {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .cal-active-title {
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--warn);
-  }
-  .cal-step-indicator {
-    font-size: 9px;
-    color: var(--dim);
-    letter-spacing: 0.05em;
-  }
-
-  .cal-instruction {
-    font-size: 11px;
-    color: var(--text);
-    line-height: 1.7;
-  }
-  .cal-dir-pos { color: var(--accent); font-weight: 600; }
-  .cal-dir-neg { color: var(--blue);   font-weight: 600; }
-
-  /* Live position during calibration */
-  .cal-pos-monitor {
-    display: flex;
-    gap: 20px;
-    padding: 8px 10px;
-    background: var(--bg3);
-    border-radius: 2px;
-  }
-  .cal-pm-item { display: flex; gap: 5px; align-items: baseline; }
-  .cal-pm-label { font-size: 9px; color: var(--muted); letter-spacing: 0.1em; }
-  .cal-pm-val { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text); min-width: 48px; }
-
-  /* Mark & Cancel buttons */
-  .mark-btn {
-    font-family: var(--mono);
-    font-size: 13px;
-    font-weight: 500;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    padding: 14px;
-    border: 1px solid var(--accent);
-    border-radius: 3px;
-    background: rgba(0,229,160,0.06);
-    color: var(--accent);
-    cursor: pointer;
-    text-align: center;
-    transition: all 0.12s;
-    user-select: none;
-  }
-  .mark-btn:hover   { background: rgba(0,229,160,0.13); }
-  .mark-btn:active  { background: rgba(0,229,160,0.22); transform: scale(0.98); }
-
-  .cal-cancel-btn {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 7px;
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    text-align: center;
-    transition: all 0.12s;
-    width: 100%;
-  }
-  .cal-cancel-btn:hover { border-color: var(--danger); color: var(--danger); }
-
-  /* Log-only endpoint buttons (non-committing position note) */
-  .cal-endp-log-btn {
-    font-family: var(--mono);
-    font-size: 9px;
-    letter-spacing: 0.08em;
-    padding: 4px 8px;
-    border: 1px dashed var(--border2);
-    border-radius: 2px;
-    background: transparent;
-    color: var(--dim);
-    cursor: pointer;
-    white-space: nowrap;
-    flex-shrink: 0;
-    transition: all 0.12s;
-  }
-  .cal-endp-log-btn:hover { border-color: var(--warn); color: var(--warn); border-style: solid; }
-
-  /* Safety margin section */
-  .cal-section-sep {
-    border: none;
-    border-top: 1px solid var(--border);
-  }
-  .cal-section-label {
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 10px;
-  }
-  .cal-conf-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
-  }
-  .cal-conf-row label { font-size: 9px; color: var(--muted); white-space: nowrap; letter-spacing: 0.08em; }
-  .cal-conf-row input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
-  .cal-conf-val {
-    font-size: 12px;
-    color: var(--text);
-    min-width: 34px;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  .cal-conf-note { font-size: 10px; color: var(--dim); line-height: 1.6; }
-  .cal-eff-ranges { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
-  .cal-eff-row { display: flex; justify-content: space-between; font-size: 10px; }
-  .cal-eff-axis { color: var(--muted); }
-  .cal-eff-val { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .cal-section-sep { border: none; border-top: 1px solid var(--border); }
 
   /* ── Projector modal ── */
   .proj-overlay {
@@ -868,25 +604,25 @@
     position: sticky; top: 0; background: var(--bg1); z-index: 1;
   }
   .proj-title {
-    font-size: 10px; font-weight: 600; letter-spacing: 0.2em;
+    font-size: 15px; font-weight: 600; letter-spacing: 0.2em;
     text-transform: uppercase; color: var(--blue);
   }
   .proj-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
   .proj-section-label {
-    font-size: 9px; font-weight: 600; letter-spacing: 0.2em;
+    font-size: 14px; font-weight: 600; letter-spacing: 0.2em;
     text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
   }
   .proj-dropzone {
     border: 1px dashed var(--border2); border-radius: 3px;
     padding: 28px 20px; text-align: center; cursor: pointer;
     display: flex; flex-direction: column; align-items: center; gap: 6px;
-    font-size: 11px; color: var(--muted);
+    font-size: 17px; color: var(--muted);
     transition: border-color 0.15s, background 0.15s;
   }
   .proj-dropzone:hover, .proj-dropzone.dz-hover {
     border-color: var(--blue); background: rgba(74,158,255,0.04);
   }
-  .proj-dropzone-icon { font-size: 26px; color: var(--border2); margin-bottom: 2px; }
+  .proj-dropzone-icon { font-size: 39px; color: var(--border2); margin-bottom: 2px; }
   .proj-preview-wrap {
     display: flex; flex-direction: column; gap: 6px;
   }
@@ -896,27 +632,11 @@
     border: 1px solid var(--border);
   }
   .proj-preview-meta { display: flex; justify-content: space-between; align-items: center; }
-  .proj-screen-list { display: flex; flex-direction: column; gap: 4px; }
-  .proj-screen-item {
-    display: flex; align-items: center; gap: 10px;
-    padding: 9px 12px; background: var(--bg2);
-    border: 1px solid var(--border); border-radius: 3px;
-    cursor: pointer; transition: border-color 0.12s;
-  }
-  .proj-screen-item:hover { border-color: var(--border2); }
-  .proj-screen-item.selected { border-color: var(--blue); }
-  .proj-screen-dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--border2); flex-shrink: 0;
-  }
-  .proj-screen-dot.ext { background: var(--blue); box-shadow: 0 0 5px var(--blue); }
-  .proj-screen-name { font-size: 11px; color: var(--text); flex: 1; }
-  .proj-screen-res { font-size: 10px; color: var(--dim); }
   .proj-status-dot {
     width: 7px; height: 7px; border-radius: 50%; background: var(--muted);
   }
   .proj-status-dot.on { background: var(--blue); box-shadow: 0 0 5px var(--blue); }
-  .proj-tip { font-size: 10px; color: var(--dim); line-height: 1.6; }
+  .proj-tip { font-size: 15px; color: var(--dim); line-height: 1.6; }
 
   /* ── State panel (left) ── */
   .state-panel {
@@ -924,7 +644,7 @@
     border-top: 1px solid var(--border);
     flex-shrink: 0;
   }
-  .state-info { font-size: 9px; color: var(--dim); margin-top: 5px; line-height: 1.5; }
+  .state-info { font-size: 14px; color: var(--dim); margin-top: 5px; line-height: 1.5; }
 
   /* ── Autofocus ── */
   .af-section {
@@ -933,15 +653,15 @@
     border-top: 1px solid var(--border);
   }
   .af-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-  .af-row label { font-size: 9px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
+  .af-row label { font-size: 14px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
   .af-progress-wrap {
     height: 3px; background: var(--bg3); border-radius: 2px;
     overflow: hidden; margin-bottom: 6px; display: none;
   }
   .af-progress-bar { height: 100%; background: var(--blue); border-radius: 2px; width: 0%; transition: width 0.15s; }
-  .af-status { font-size: 10px; color: var(--dim); display: none; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+  .af-status { font-size: 15px; color: var(--dim); display: none; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
   .af-cancel-btn {
-    font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    font-family: var(--mono); font-size: 15px; letter-spacing: 0.1em; text-transform: uppercase;
     padding: 5px; border: 1px solid var(--border); border-radius: 2px; background: transparent;
     color: var(--muted); cursor: pointer; width: 100%; margin-top: 4px; display: none;
     transition: all 0.12s;
@@ -955,13 +675,12 @@
 
   <!-- TOP BAR -->
   <div class="topbar">
-    <span class="topbar-title">XYZ Stage</span>
+    <span class="topbar-title">Litho Control</span>
     <div style="display:flex;align-items:center;gap:6px;">
       <div class="status-dot" id="dot"></div>
       <span class="status-text" id="statusText">disconnected</span>
     </div>
     <div class="topbar-sep"></div>
-    <button class="conn-btn" id="undoBtn" onclick="undoLast()" disabled title="Revert position tracking to before the last command (no motor movement)">Undo</button>
     <button class="conn-btn" id="projModalBtn" onclick="openProjModal()" style="border-color:var(--blue);color:var(--blue);opacity:0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">Projector</button>
     <button class="conn-btn" id="connBtn" onclick="toggleConnect()">Connect</button>
   </div>
@@ -1014,10 +733,10 @@
     </div>
 
     <div class="speed-panel">
-      <div class="step-label" style="margin-bottom:8px;">Speed (step delay µs)</div>
+      <div class="step-label" style="margin-bottom:8px;">Speed · step delay <span style="text-transform:none;">(µs)</span></div>
       <div class="speed-row">
         <label>FAST</label>
-        <input type="range" min="100" max="5000" value="800" step="50" id="speedSlider" oninput="setSpeed(+this.value)" />
+        <input type="range" min="100" max="5000" value="800" step="50" id="speedSlider" oninput="showSpeed(+this.value)" onchange="setSpeed(+this.value)" />
         <label>SLOW</label>
       </div>
       <div style="text-align:center;margin-top:4px;">
@@ -1031,18 +750,23 @@
         <button class="hz-btn active" id="idleRelease" onclick="setIdleMode('release')">Release<small>quiet · D</small></button>
         <button class="hz-btn" id="idleHold" onclick="setIdleMode('hold')">Hold<small>squeals · E</small></button>
       </div>
-      <div class="state-info">Every move is powered and counted in both modes.
-        Release: no holding torque at rest. Use Hold if an axis drifts
-        (e.g. Z sinks) while released.</div>
+      <div class="state-info">Moves are powered either way. Use Hold if an axis drifts at rest.</div>
     </div>
 
     <div class="state-panel">
       <div class="step-label">Saved State</div>
-      <div style="display:flex;gap:6px;">
-        <button class="hz-btn" style="flex:1;font-size:9px;" onclick="saveStateToFile()">Export ↓</button>
-        <button class="hz-btn" style="flex:1;font-size:9px;" onclick="loadStateFromFile()">Import ↑</button>
-      </div>
-      <div class="state-info" id="stateInfo">Auto-saved locally</div>
+      <button class="hz-btn" style="width:100%;font-size:14px;" onclick="saveStateToFile()">Export snapshot ↓</button>
+      <div class="state-info">A record only: the firmware keeps position, limits and focus.</div>
+    </div>
+
+    <div class="section-hdr" style="border-top:1px solid var(--border);">Serial log</div>
+    <div class="log-wrap">
+      <div class="log" id="log"></div>
+    </div>
+    <div class="raw-row">
+      <input class="tinput" type="text" id="rawCmd" placeholder="raw command…" style="flex:1;" onkeydown="if(event.key==='Enter')sendRaw()" />
+      <button class="raw-send" onclick="sendRaw()">Send</button>
+      <button class="raw-send" onclick="clearLog()">Clr</button>
     </div>
 
   </div>
@@ -1057,7 +781,7 @@
         <span class="cam-title">Projector &nbsp;·&nbsp; Camera (deflickered)</span>
         <span class="cam-status-text" id="camStatusText">not connected</span>
         <div class="cam-sep"></div>
-        <button class="conn-btn" id="camConnBtn" onclick="toggleCamera()" style="font-size:10px;padding:4px 12px;">Connect</button>
+        <button class="conn-btn" id="camConnBtn" onclick="toggleCamera()" style="font-size:15px;padding:4px 12px;">Connect</button>
       </div>
       <div class="pane-grid">
         <div class="pane">
@@ -1077,7 +801,7 @@
             <div class="cam-placeholder" id="camPlaceholder">
               <div class="cam-placeholder-icon">⬡</div>
               <div>Run <strong>ui\start.ps1</strong> (or <strong>ui/server.py</strong>) and open this page from it</div>
-              <div style="font-size:10px;color:var(--border2);">Close the live viewer and pylon Viewer — the camera allows one client</div>
+              <div style="font-size:15px;color:var(--dim);">Close the live viewer and pylon Viewer — the camera allows one client</div>
             </div>
           </div>
         </div>
@@ -1085,17 +809,17 @@
       <div class="cam-controls">
         <div class="cam-ctrl-group">
           <span class="cam-ctrl-label">EXPOSURE</span>
-          <input class="tinput" type="number" id="camExposure" value="400" min="34" max="1000000" style="width:80px;" />
+          <input class="tinput" type="number" id="camExposure" value="400" min="34" max="1000000" style="width:120px;" />
           <span class="cam-ctrl-unit">µs</span>
         </div>
         <div class="cam-ctrl-group">
           <span class="cam-ctrl-label">KEEP ≥</span>
-          <input class="tinput" type="number" id="camKeepFrac" value="0.8" min="0" max="1" step="0.02" style="width:60px;" />
+          <input class="tinput" type="number" id="camKeepFrac" value="0.8" min="0" max="1" step="0.02" style="width:90px;" />
           <span class="cam-ctrl-unit">× recent top</span>
         </div>
         <div class="cam-ctrl-group">
           <span class="cam-ctrl-label">MAX HOLD</span>
-          <input class="tinput" type="number" id="camMaxHold" value="0.5" min="0" max="10" step="0.1" style="width:60px;" />
+          <input class="tinput" type="number" id="camMaxHold" value="0.5" min="0" max="10" step="0.1" style="width:90px;" />
           <span class="cam-ctrl-unit">s</span>
         </div>
         <button class="cam-apply-btn" onclick="applyCamConfig()">Apply</button>
@@ -1106,6 +830,7 @@
     <!-- scrollable stage controls -->
     <div class="center-scroll" id="centerScroll">
 
+    <div class="jog-row">
     <!-- JOG PAD -->
     <div class="jog-card">
       <div class="jog-card-title">Jog control</div>
@@ -1135,112 +860,47 @@
 
       </div>
       <div class="kbd-row">
-        <span class="kbd">← →</span><span style="font-size:9px;color:var(--muted);">X</span>
-        <span class="kbd">↑ ↓</span><span style="font-size:9px;color:var(--muted);">Y</span>
-        <span class="kbd">PgUp</span><span class="kbd">PgDn</span><span style="font-size:9px;color:var(--muted);">Z</span>
+        <span class="kbd">← →</span><span style="font-size:14px;color:var(--muted);">X</span>
+        <span class="kbd">↑ ↓</span><span style="font-size:14px;color:var(--muted);">Y</span>
+        <span class="kbd">PgUp</span><span class="kbd">PgDn</span><span style="font-size:14px;color:var(--muted);">Z</span>
       </div>
     </div>
 
-    <!-- CALIBRATION -->
-    <div class="mcard" id="calCard">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div class="mcard-title" style="margin:0;color:var(--warn);letter-spacing:0.18em;">Calibration</div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span class="cal-badge" id="calBadge">UNCAL</span>
-          <button class="hz-btn" style="font-size:9px;padding:4px 10px;border-color:rgba(224,85,85,0.5);color:var(--danger);" onclick="clearAllCal()" title="Remove all calibration and unlock movement">Clear All</button>
-        </div>
+    <!-- Z FOCUS -->
+    <div class="mcard">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;">
+        <div class="mcard-title" style="margin:0;">Z Focus</div>
+        <span id="focusPosLabel" style="font-size:15px;color:var(--muted);">not set</span>
       </div>
-      <div style="font-size:10px;color:var(--dim);line-height:1.6;margin-bottom:12px;">
-        Jog to each physical extreme, click <strong style="color:var(--text);">Set</strong> to commit that endpoint.
-        Use <strong style="color:var(--text);">📌 Note</strong> to log a candidate position without committing.
-        The midpoint of each axis becomes position&nbsp;0.
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button class="go-btn" style="margin-top:0;" onclick="setFocus()">Set focus here</button>
+        <button class="go-btn" style="margin-top:0;" id="goFocusBtn" onclick="goFocus()" disabled>Go to focus</button>
       </div>
 
-      <!-- Live position readout -->
-      <div class="cal-pos-monitor" style="margin-bottom:14px;">
-        <div class="cal-pm-item"><span class="cal-pm-label">X</span><span class="cal-pm-val" id="calPmX">—</span></div>
-        <div class="cal-pm-item"><span class="cal-pm-label">Y</span><span class="cal-pm-val" id="calPmY">—</span></div>
-        <div class="cal-pm-item"><span class="cal-pm-label">Z</span><span class="cal-pm-val" id="calPmZ">—</span></div>
+      <div class="af-section">
+        <div class="mcard-title" style="margin-bottom:8px;">Autofocus (Z sweep)</div>
+        <div class="af-row">
+          <label>RANGE ±</label>
+          <input class="tinput" type="number" id="afRange" value="500" min="10" style="width:100px;" />
+          <label>STEP</label>
+          <input class="tinput" type="number" id="afStep" value="50" min="1" style="width:90px;" />
+          <label style="color:var(--dim);">steps</label>
+        </div>
+        <div class="af-row" style="margin-bottom:4px;">
+          <label>SETTLE</label>
+          <input class="tinput" type="number" id="afSettle" value="300" min="50" style="width:90px;" />
+          <label style="color:var(--dim);">ms after each move</label>
+        </div>
+        <div class="af-progress-wrap" id="afProgressWrap">
+          <div class="af-progress-bar" id="afProgressBar"></div>
+        </div>
+        <div class="af-status" id="afStatus"></div>
+        <button class="go-btn" style="margin-top:6px;" id="afRunBtn" onclick="runAutofocus()">Run Autofocus</button>
+        <button class="af-cancel-btn" id="afCancelBtn" onclick="cancelAutofocus()">Cancel</button>
       </div>
-
-      <!-- X axis -->
-      <div id="calRowX" style="margin-bottom:12px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-          <span class="cal-axis-letter X" style="font-size:13px;font-weight:600;color:#ff6b6b;">X</span>
-          <div class="cal-dot" id="calDotX"></div>
-          <span class="cal-axis-range" id="calRangeX" style="flex:1;font-size:10px;color:var(--dim);">Not calibrated</span>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <div style="display:flex;gap:4px;">
-              <button class="cal-endp-log-btn" style="flex:1;" onclick="logEndpointCandidate('X','NEG')">📌 Note Left</button>
-              <button class="cal-axis-btn" style="flex:1;" onclick="setEndpoint('X','NEG')">Set Left ←</button>
-            </div>
-            <span id="calEndpXNeg" style="font-size:9px;color:var(--dim);text-align:center;">Left: —</span>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <div style="display:flex;gap:4px;">
-              <button class="cal-axis-btn" style="flex:1;" onclick="setEndpoint('X','POS')">→ Set Right</button>
-              <button class="cal-endp-log-btn" style="flex:1;" onclick="logEndpointCandidate('X','POS')">Note Right 📌</button>
-            </div>
-            <span id="calEndpXPos" style="font-size:9px;color:var(--dim);text-align:center;">Right: —</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Y axis -->
-      <div id="calRowY" style="margin-bottom:12px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-          <span class="cal-axis-letter Y" style="font-size:13px;font-weight:600;color:#69db7c;">Y</span>
-          <div class="cal-dot" id="calDotY"></div>
-          <span class="cal-axis-range" id="calRangeY" style="flex:1;font-size:10px;color:var(--dim);">Not calibrated</span>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <div style="display:flex;gap:4px;">
-              <button class="cal-endp-log-btn" style="flex:1;" onclick="logEndpointCandidate('Y','NEG')">📌 Note Back</button>
-              <button class="cal-axis-btn" style="flex:1;" onclick="setEndpoint('Y','NEG')">Set Back ←</button>
-            </div>
-            <span id="calEndpYNeg" style="font-size:9px;color:var(--dim);text-align:center;">Back: —</span>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <div style="display:flex;gap:4px;">
-              <button class="cal-axis-btn" style="flex:1;" onclick="setEndpoint('Y','POS')">→ Set Front</button>
-              <button class="cal-endp-log-btn" style="flex:1;" onclick="logEndpointCandidate('Y','POS')">Note Front 📌</button>
-            </div>
-            <span id="calEndpYPos" style="font-size:9px;color:var(--dim);text-align:center;">Front: —</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Z axis -->
-      <div id="calRowZ" style="margin-bottom:14px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-          <span class="cal-axis-letter Z" style="font-size:13px;font-weight:600;color:#74c0fc;">Z</span>
-          <div class="cal-dot" id="calDotZ"></div>
-          <span class="cal-axis-range" id="calRangeZ" style="flex:1;font-size:10px;color:var(--dim);">Not calibrated</span>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <div style="display:flex;gap:4px;">
-              <button class="cal-endp-log-btn" style="flex:1;" onclick="logEndpointCandidate('Z','NEG')">📌 Note Down</button>
-              <button class="cal-axis-btn" style="flex:1;" onclick="setEndpoint('Z','NEG')">Set Down ↓</button>
-            </div>
-            <span id="calEndpZNeg" style="font-size:9px;color:var(--dim);text-align:center;">Down: —</span>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <div style="display:flex;gap:4px;">
-              <button class="cal-axis-btn" style="flex:1;" onclick="setEndpoint('Z','POS')">↑ Set Up</button>
-              <button class="cal-endp-log-btn" style="flex:1;" onclick="logEndpointCandidate('Z','POS')">Note Up 📌</button>
-            </div>
-            <span id="calEndpZPos" style="font-size:9px;color:var(--dim);text-align:center;">Up: —</span>
-          </div>
-        </div>
-      </div>
-
-      <button class="go-btn" style="margin-top:0;border-color:rgba(224,85,85,0.4);color:var(--danger);" onclick="clearAllCal()">Reset All Calibration</button>
-      <div class="cal-eff-ranges" id="calEffRanges" style="margin-top:10px;"></div>
     </div>
+
+    </div><!-- /jog-row -->
 
     <!-- GOTO + RELATIVE -->
     <div class="twoCol">
@@ -1259,82 +919,24 @@
           <input class="tinput" type="number" id="relDist" placeholder="±steps" />
         </div>
         <button class="go-btn" onclick="gotoRel()">Move →</button>
-        <div style="margin-top:14px;">
-          <div class="mcard-title">Set position here</div>
-          <div class="rel-row" style="margin-bottom:0;">
-            <select class="rel-sel" id="zeroAxis"><option>X</option><option>Y</option><option>Z</option><option>ALL</option></select>
-            <button class="go-btn" style="margin-top:0;" onclick="zeroAxis()">Zero →</button>
-          </div>
-        </div>
       </div>
     </div>
 
     <!-- HOME -->
     <div class="hzCard">
-      <div class="hzCard-title">Home (go to calibrated centre)</div>
-      <div class="hz-grid">
-        <button class="hz-btn" onclick="homeAxis('X')">Home X</button>
-        <button class="hz-btn" onclick="homeAxis('Y')">Home Y</button>
-        <button class="hz-btn" onclick="homeAxis('Z')">Home Z</button>
-        <button class="hz-btn warn" onclick="send('H')">Set home</button>
-      </div>
-    </div>
-
-    <!-- Z FOCUS -->
-    <div class="mcard">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;">
-        <div class="mcard-title" style="margin:0;">Z Focus</div>
-        <span id="focusPosLabel" style="font-size:10px;color:var(--muted);">not set</span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <button class="go-btn" style="margin-top:0;" onclick="setFocus()">Set focus here</button>
-        <button class="go-btn" style="margin-top:0;" id="goFocusBtn" onclick="goFocus()" disabled>Go to focus</button>
-      </div>
-
-      <div class="af-section">
-        <div class="mcard-title" style="margin-bottom:8px;">Autofocus (Z sweep)</div>
-        <div class="af-row">
-          <label>RANGE ±</label>
-          <input class="tinput" type="number" id="afRange" value="500" min="10" style="width:72px;" />
-          <label>STEP</label>
-          <input class="tinput" type="number" id="afStep" value="50" min="1" style="width:62px;" />
-          <label style="color:var(--dim);">steps</label>
-        </div>
-        <div class="af-row" style="margin-bottom:4px;">
-          <label>SETTLE</label>
-          <input class="tinput" type="number" id="afSettle" value="300" min="50" style="width:62px;" />
-          <label style="color:var(--dim);">ms after each move</label>
-        </div>
-        <div class="af-progress-wrap" id="afProgressWrap">
-          <div class="af-progress-bar" id="afProgressBar"></div>
-        </div>
-        <div class="af-status" id="afStatus"></div>
-        <button class="go-btn" style="margin-top:6px;" id="afRunBtn" onclick="runAutofocus()">Run Autofocus</button>
-        <button class="af-cancel-btn" id="afCancelBtn" onclick="cancelAutofocus()">Cancel</button>
+      <div class="hzCard-title">Go to zero (the homed end; homing: xyz_stage/homing.py)</div>
+      <div class="hz-grid" style="grid-template-columns:repeat(3,1fr);">
+        <button class="hz-btn" onclick="goZero('X')">X → 0</button>
+        <button class="hz-btn" onclick="goZero('Y')">Y → 0</button>
+        <button class="hz-btn" onclick="goZero('Z')">Z → 0</button>
       </div>
     </div>
 
     </div><!-- /center-scroll -->
   </div><!-- /center -->
 
-  <!-- RIGHT PANEL -->
-  <div class="right">
-    <div class="section-hdr">Serial log</div>
-    <div class="log-wrap">
-      <div class="log" id="log"></div>
-    </div>
-    <div class="raw-row">
-      <input class="tinput" type="text" id="rawCmd" placeholder="raw command…" style="flex:1;" onkeydown="if(event.key==='Enter')sendRaw()" />
-      <button class="raw-send" onclick="sendRaw()">Send</button>
-      <button class="raw-send" onclick="clearLog()">Clr</button>
-    </div>
-  </div>
-
 </div>
 
-<!-- ════════════════════════════════════════════════
-     CALIBRATION MODAL
-════════════════════════════════════════════════ -->
 <!-- ════════════════════════════════════════════════
      PROJECTOR MODAL
 ════════════════════════════════════════════════ -->
@@ -1345,7 +947,7 @@
       <span class="proj-title">Projector</span>
       <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
         <div class="proj-status-dot" id="projDot"></div>
-        <span style="font-size:10px;color:var(--muted);" id="projStatusText">not projecting</span>
+        <span style="font-size:15px;color:var(--muted);" id="projStatusText">not projecting</span>
         <button class="cal-close-btn" onclick="closeProjModal()">✕</button>
       </div>
     </div>
@@ -1359,14 +961,14 @@
           <input type="file" id="projFileInput" accept="image/*" style="display:none;" onchange="onProjFileChange(event)" />
           <div class="proj-dropzone-icon">⊞</div>
           <div>Click to browse or drop image here</div>
-          <div style="font-size:10px;color:var(--dim);">PNG · JPG · TIFF · BMP</div>
+          <div style="font-size:15px;color:var(--dim);">PNG · JPG · TIFF · BMP</div>
         </div>
         <div class="proj-preview-wrap" id="projPreviewWrap" style="display:none;">
           <img class="proj-preview-img" id="projPreviewImg" src="" alt="" />
           <div class="proj-preview-meta">
-            <span style="font-size:10px;color:var(--muted);" id="projFileName"></span>
+            <span style="font-size:15px;color:var(--muted);" id="projFileName"></span>
             <div style="display:flex;gap:8px;align-items:center;">
-              <span style="font-size:10px;color:var(--dim);" id="projFileSize"></span>
+              <span style="font-size:15px;color:var(--dim);" id="projFileSize"></span>
               <button class="cam-apply-btn" onclick="resetProjImage()">Change</button>
             </div>
           </div>
@@ -1377,7 +979,7 @@
       <hr class="cal-section-sep" />
       <div>
         <div class="proj-section-label">Display</div>
-        <div style="font-size:11px;color:var(--text);" id="projMonitorInfo">—</div>
+        <div style="font-size:17px;color:var(--text);" id="projMonitorInfo">—</div>
       </div>
 
       <!-- Controls -->
@@ -1388,11 +990,11 @@
         <button class="cal-axis-btn" id="projStopBtn" onclick="stopProjection()" style="display:none;padding:8px 16px;border-color:var(--danger);color:var(--danger);">Close</button>
       </div>
       <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
-        <span style="font-size:9px;color:var(--muted);letter-spacing:0.12em;">FIT</span>
-        <button class="hz-btn" data-fit="native"  style="flex:1;font-size:9px;" onclick="setProjFit('native')">1:1 pixels</button>
-        <button class="hz-btn" data-fit="contain" style="flex:1;font-size:9px;" onclick="setProjFit('contain')">Contain</button>
-        <button class="hz-btn" data-fit="cover"   style="flex:1;font-size:9px;" onclick="setProjFit('cover')">Cover</button>
-        <button class="hz-btn" data-fit="stretch" style="flex:1;font-size:9px;" onclick="setProjFit('stretch')">Stretch</button>
+        <span style="font-size:14px;color:var(--muted);letter-spacing:0.12em;">FIT</span>
+        <button class="hz-btn" data-fit="native"  style="flex:1;font-size:14px;" onclick="setProjFit('native')">1:1 pixels</button>
+        <button class="hz-btn" data-fit="contain" style="flex:1;font-size:14px;" onclick="setProjFit('contain')">Contain</button>
+        <button class="hz-btn" data-fit="cover"   style="flex:1;font-size:14px;" onclick="setProjFit('cover')">Cover</button>
+        <button class="hz-btn" data-fit="stretch" style="flex:1;font-size:14px;" onclick="setProjFit('stretch')">Stretch</button>
       </div>
       <div class="proj-tip" style="margin-top:10px;">
         The server shows the image full-screen on the projector at its native resolution,
@@ -1425,12 +1027,6 @@ let focusSet = false;
 let calRanges = { X: null, Y: null, Z: null }; // { min, max } per calibrated axis
 let axisCalibrated = { X: false, Y: false, Z: false };
 let isCalibrated = false;
-// Pending endpoints (set before both sides are marked)
-let calEndpoints = {
-  X: { pos: null, neg: null },
-  Y: { pos: null, neg: null },
-  Z: { pos: null, neg: null }
-};
 
 // ── Connection ─────────────────────────────────────────────
 // ui/server.py owns the Uno's COM port: it finds the board by itself at
@@ -1487,7 +1083,6 @@ function setStatus(label, on) {
   const btn = document.getElementById('connBtn');
   btn.textContent = on ? 'Disconnect' : 'Connect';
   btn.className = 'conn-btn' + (on ? ' active' : '');
-  document.getElementById('undoBtn').disabled = !on;
 }
 
 // ── Firmware lines ─────────────────────────────────────────
@@ -1495,15 +1090,6 @@ function parseLine(line) {
   // DONE — motion complete
   if (line === 'DONE') {
     if (_pendingDone) { _pendingDone(); _pendingDone = null; }
-    return;
-  }
-
-  // CAL MANUAL OK
-  if (line === 'CAL MANUAL OK') {
-    isCalibrated = true;
-    updateCalBadge();
-    autoSaveState();
-    send('L'); send('P');   // refresh limits and position
     return;
   }
 
@@ -1515,7 +1101,6 @@ function parseLine(line) {
       pos.Y = parseInt(parts[1]);
       pos.Z = parseInt(parts[2]);
       updatePosUI();
-      updateCalPosMonitor();
     }
     return;
   }
@@ -1546,7 +1131,6 @@ function parseLine(line) {
           limits[a+'max'] = +p[i*2+1];
         }
       });
-      updateCalUI();
       updateCalBadge();
       updateLimitsUI();
     }
@@ -1560,9 +1144,8 @@ function parseLine(line) {
   if (line === 'CAL CLEARED') {
     axisCalibrated = { X: false, Y: false, Z: false };
     calRanges = { X: null, Y: null, Z: null };
-    calEndpoints = { X:{pos:null,neg:null}, Y:{pos:null,neg:null}, Z:{pos:null,neg:null} };
     isCalibrated = false;
-    updateCalUI(); updateCalBadge(); updateLimitsUI();
+    updateCalBadge(); updateLimitsUI();
     return;
   }
 
@@ -1572,29 +1155,14 @@ function parseLine(line) {
     if ('XYZ'.includes(ax)) {
       axisCalibrated[ax] = false;
       calRanges[ax] = null;
-      calEndpoints[ax] = { pos: null, neg: null };
       isCalibrated = false;
-      updateCalUI(); updateCalBadge(); updateLimitsUI();
-    }
-    return;
-  }
-
-  // CAL ENDP X POS MARKED n  /  CAL ENDP X NEG MARKED n
-  if (line.startsWith('CAL ENDP ')) {
-    const parts = line.substring(9).trim().split(/\s+/);
-    // parts: [axis, POS|NEG, MARKED, value]
-    if (parts.length >= 4 && parts[2] === 'MARKED') {
-      const ax = parts[0], side = parts[1].toLowerCase(), val = parseInt(parts[3]);
-      if ('XYZ'.includes(ax) && !isNaN(val)) {
-        calEndpoints[ax][side] = val;
-        updateCalUI();
-      }
+      updateCalBadge(); updateLimitsUI();
     }
     return;
   }
 
   // CALIBRATED / UNCALIBRATED
-  if (line === 'CALIBRATED')   { isCalibrated = true;  updateCalBadge(); autoSaveState(); return; }
+  if (line === 'CALIBRATED')   { isCalibrated = true;  updateCalBadge(); return; }
   if (line === 'UNCALIBRATED') { isCalibrated = false; updateCalBadge(); return; }
 
   // FOCUS n  or  FOCUS UNSET
@@ -1609,8 +1177,8 @@ function parseLine(line) {
     return;
   }
 
-  // UNDONE
-  if (line === 'UNDONE') { log('Position reverted (undo).', 'undo'); return; }
+  // SPEED n (reply to S)
+  if (line.startsWith('SPEED ')) { showSpeed(parseInt(line.substring(6))); return; }
 
   // CAL X DONE min max  (axis calibration completed)
   if (line.startsWith('CAL ') && line.length > 6) {
@@ -1625,12 +1193,8 @@ function parseLine(line) {
       axisCalibrated[ax] = true;
       limits[ax+'min'] = +nums[0];
       limits[ax+'max'] = +nums[1];
-      // Reset pending endpoint tracking for this axis (calibration applied)
-      calEndpoints[ax] = { pos: null, neg: null };
-      updateCalUI();
       updateCalBadge();
       updateLimitsUI();
-      autoSaveState();
       log(`${ax} calibrated: ${calRanges[ax].min} → ${calRanges[ax].max}  (${calRanges[ax].max - calRanges[ax].min} steps)`, 'sys');
     }
   }
@@ -1687,13 +1251,9 @@ function gotoRel() {
   send(`J ${axis} ${dist}`);
 }
 
-function zeroAxis() {
-  const a = document.getElementById('zeroAxis').value;
-  send('Z ' + a);
-}
-
-// Go to 0 on one axis, keep others (0 = calibrated centre after calibration)
-function homeAxis(axis) {
+// Go to 0 on one axis, keep the others. 0 is the homed end of the axis
+// (its limit switch, or the point zeroed with homing.py --set-zero).
+function goZero(axis) {
   const x = axis === 'X' ? 0 : pos.X;
   const y = axis === 'Y' ? 0 : pos.Y;
   const z = axis === 'Z' ? 0 : pos.Z;
@@ -1716,9 +1276,18 @@ function setStepCustom(v) {
 }
 
 // ── Speed ──────────────────────────────────────────────────
-function setSpeed(v) {
+// The slider shows the value while dragging and sends it once on release
+// (every S is a serial command, and any byte aborts a homing seek). The
+// firmware's SPEED reply sets it back, e.g. to 800 after a reset.
+function showSpeed(v) {
+  if (!(v > 0)) return;
   speedDelay = v;
+  document.getElementById('speedSlider').value = v;
   document.getElementById('speedVal').textContent = v + ' µs';
+}
+
+function setSpeed(v) {
+  showSpeed(v);
   send('S ' + v);
 }
 
@@ -1761,7 +1330,6 @@ function updateLimitsUI() {
     }
   });
   updatePosUI();
-  updateCalEffRanges();
 }
 
 function updateCalBadge() {
@@ -1779,16 +1347,10 @@ function updateCalBadge() {
   b.style.color = ''; b.style.borderColor = '';
 }
 
-// ── Undo ───────────────────────────────────────────────────
-function undoLast() {
-  send('UNDO');
-}
-
 // ── Focus ──────────────────────────────────────────────────
 function setFocus() {
   if (!connected) return;
   send('FOCUS SET');
-  autoSaveState();
 }
 
 function goFocus() {
@@ -1808,91 +1370,6 @@ function updateFocusUI() {
     label.style.color = 'var(--muted)';
     btn.disabled = true;
   }
-}
-
-// ── Calibration UI ─────────────────────────────────────────
-// Mark current position as an endpoint for the given axis and side ('POS' or 'NEG').
-function setEndpoint(axis, side) {
-  if (!connected) { log('Connect first', 'err'); return; }
-  send(`CAL ENDP ${axis} ${side}`);
-}
-
-// Log current position as a named endpoint candidate without committing to calibration.
-function logEndpointCandidate(axis, side) {
-  const lbls = ENDP_LABELS[axis];
-  const sideName = side === 'NEG' ? lbls.neg : lbls.pos;
-  const val = pos[axis];
-  log(`[NOTE] ${axis} ${sideName} endpoint candidate: ${axis}=${val}  (X=${pos.X} Y=${pos.Y} Z=${pos.Z})`, 'cal');
-}
-
-function clearAxisCal(axis) {
-  if (!connected) { log('Connect first', 'err'); return; }
-  send(`CAL CLEAR ${axis}`);
-}
-
-function clearAllCal() {
-  if (!connected) { log('Connect first', 'err'); return; }
-  send('CAL CLEAR');
-}
-
-function updateCalPosMonitor() {
-  document.getElementById('calPmX').textContent = pos.X;
-  document.getElementById('calPmY').textContent = pos.Y;
-  document.getElementById('calPmZ').textContent = pos.Z;
-}
-
-function updateCalEffRanges() {
-  const el = document.getElementById('calEffRanges');
-  const anyDone = axisCalibrated.X || axisCalibrated.Y || axisCalibrated.Z;
-  if (!anyDone) { el.innerHTML = ''; return; }
-  el.innerHTML = '<div style="font-size:9px;color:var(--muted);margin-bottom:4px;letter-spacing:0.1em;margin-top:4px;">CALIBRATED RANGES</div>' +
-    ['X','Y','Z'].map(a => {
-      if (!axisCalibrated[a]) return `<div class="cal-eff-row"><span class="cal-eff-axis">${a}</span><span class="cal-eff-val" style="color:var(--dim)">not calibrated</span></div>`;
-      const min = limits[a+'min'], max = limits[a+'max'];
-      return `<div class="cal-eff-row">
-        <span class="cal-eff-axis">${a}</span>
-        <span class="cal-eff-val">${min} → ${max} &nbsp;(${max - min} steps)</span>
-      </div>`;
-    }).join('');
-}
-
-// Endpoint label helpers per axis
-const ENDP_LABELS = {
-  X: { neg: 'Left', pos: 'Right' },
-  Y: { neg: 'Back', pos: 'Front' },
-  Z: { neg: 'Down', pos: 'Up'   }
-};
-
-function updateCalUI() {
-  updateCalPosMonitor();
-
-  ['X','Y','Z'].forEach(a => {
-    const dot      = document.getElementById('calDot' + a);
-    const rangeEl  = document.getElementById('calRange' + a);
-    const negLabel = document.getElementById('calEndp' + a + 'Neg');
-    const posLabel = document.getElementById('calEndp' + a + 'Pos');
-    const lbls     = ENDP_LABELS[a];
-
-    // Pending endpoint display (before both sides confirmed)
-    const ep = calEndpoints[a];
-    negLabel.textContent = ep.neg !== null
-      ? `${lbls.neg}: ${ep.neg}`
-      : `${lbls.neg}: —`;
-    posLabel.textContent = ep.pos !== null
-      ? `${lbls.pos}: ${ep.pos}`
-      : `${lbls.pos}: —`;
-
-    if (axisCalibrated[a] && calRanges[a]) {
-      const r = calRanges[a];
-      dot.className = 'cal-dot ok';
-      rangeEl.textContent = `${r.min} → ${r.max}  (${r.max - r.min} steps)`;
-    } else {
-      dot.className = 'cal-dot';
-      rangeEl.textContent = 'Not calibrated';
-    }
-  });
-
-  updateCalEffRanges();
 }
 
 // ── Log ────────────────────────────────────────────────────
@@ -2058,69 +1535,14 @@ function waitForDone(timeoutMs = 20000) {
 // ── State persistence ───────────────────────────────────────
 function buildStateObject() {
   return {
-    version: 2,
+    version: 3,
     saved: new Date().toISOString(),
     calibration: { isCalibrated, axisCalibrated, calRanges },
+    limits: { ...limits },
     position: { ...pos },
     focusZ, focusSet,
     speedDelay,
   };
-}
-
-function autoSaveState() {
-  try {
-    localStorage.setItem('xyzStageState', JSON.stringify(buildStateObject()));
-    const el = document.getElementById('stateInfo');
-    if (el) el.textContent = 'Auto-saved ' + new Date().toLocaleTimeString();
-  } catch(_) {}
-}
-
-function applyStateObject(state, fromFile) {
-  if (!state || (state.version !== 1 && state.version !== 2)) { log('State: unknown format', 'err'); return; }
-  const cal = state.calibration || {};
-  if (cal.calRanges) {
-    calRanges = { X: cal.calRanges.X || null, Y: cal.calRanges.Y || null, Z: cal.calRanges.Z || null };
-  }
-  if (cal.axisCalibrated) {
-    axisCalibrated = { X: !!cal.axisCalibrated.X, Y: !!cal.axisCalibrated.Y, Z: !!cal.axisCalibrated.Z };
-  } else if (cal.isCalibrated) {
-    // v1 state: if fully calibrated, mark all axes
-    axisCalibrated = { X: true, Y: true, Z: true };
-  }
-  if (cal.isCalibrated !== undefined) isCalibrated = cal.isCalibrated;
-  // Restore limits from saved calRanges
-  ['X','Y','Z'].forEach(a => {
-    if (axisCalibrated[a] && calRanges[a]) {
-      limits[a+'min'] = calRanges[a].min;
-      limits[a+'max'] = calRanges[a].max;
-    }
-  });
-  if (state.focusZ !== undefined) { focusZ = state.focusZ; focusSet = !!state.focusSet; updateFocusUI(); }
-  if (state.speedDelay) {
-    speedDelay = state.speedDelay;
-    document.getElementById('speedSlider').value = speedDelay;
-    document.getElementById('speedVal').textContent = speedDelay + ' µs';
-  }
-  updateCalBadge();
-  updateCalUI();
-  updateLimitsUI();
-  // If connected and file has full calibration, push it to firmware via CAL MANUAL
-  if (fromFile && connected && isCalibrated && calRanges.X && calRanges.Y && calRanges.Z) {
-    const { X: rx, Y: ry, Z: rz } = calRanges;
-    const p = state.position || pos;
-    send(`CAL MANUAL ${rx.min} ${rx.max} ${ry.min} ${ry.max} ${rz.min} ${rz.max} ${p.X} ${p.Y} ${p.Z}`);
-    log('Calibration restored from file → sent CAL MANUAL', 'sys');
-  }
-  log('State loaded' + (fromFile ? ' from file' : ' from last session') + '.', 'sys');
-  if (fromFile) autoSaveState();
-}
-
-function loadStateFromLocalStorage() {
-  try {
-    const raw = localStorage.getItem('xyzStageState');
-    if (!raw) return;
-    applyStateObject(JSON.parse(raw), false);
-  } catch(_) {}
 }
 
 async function saveStateToFile() {
@@ -2142,25 +1564,6 @@ async function saveStateToFile() {
     }
     log('State exported to file.', 'sys');
   } catch(e) { if (e.name !== 'AbortError') log('Export failed: ' + e.message, 'err'); }
-}
-
-async function loadStateFromFile() {
-  try {
-    let text;
-    if (window.showOpenFilePicker) {
-      const [handle] = await window.showOpenFilePicker({
-        types: [{ description: 'Text/JSON', accept: { 'text/plain': ['.txt', '.json'] } }],
-      });
-      text = await (await handle.getFile()).text();
-    } else {
-      text = await new Promise((res, rej) => {
-        const inp = Object.assign(document.createElement('input'), { type: 'file', accept: '.txt,.json' });
-        inp.onchange = async e => { const f = e.target.files[0]; f ? res(await f.text()) : rej(); };
-        inp.click();
-      });
-    }
-    applyStateObject(JSON.parse(text), true);
-  } catch(e) { if (e.name !== 'AbortError') log('Import failed: ' + e.message, 'err'); }
 }
 
 // ── Autofocus ───────────────────────────────────────────────
@@ -2202,10 +1605,12 @@ async function runAutofocus() {
   const stepSz  = Math.max(1,  parseInt(document.getElementById('afStep').value)   || 50);
   const settle  = Math.max(50, parseInt(document.getElementById('afSettle').value) || 300);
 
-  // Build Z sweep clamped to effective limits
+  // Build Z sweep, clamped to the soft limits when Z has them
+  const zLo = axisCalibrated.Z ? limits.Zmin : -Infinity;
+  const zHi = axisCalibrated.Z ? limits.Zmax :  Infinity;
   const zSteps = [];
   for (let z = pos.Z - range; z <= pos.Z + range; z += stepSz) {
-    const cz = Math.max(limits.Zmin, Math.min(limits.Zmax, z));
+    const cz = Math.max(zLo, Math.min(zHi, z));
     if (!zSteps.length || cz !== zSteps[zSteps.length - 1]) zSteps.push(cz);
   }
   if (zSteps.length === 0) { log('Autofocus: no valid Z positions in range', 'err'); return; }
@@ -2318,7 +1723,7 @@ function _camDisconnect(reason) {
   document.getElementById('camPlaceholder').innerHTML =
     `<div class="cam-placeholder-icon">⬡</div>` +
     `<div>${reason || 'Disconnected'}</div>` +
-    `<div style="font-size:10px;color:var(--border2);">Click Connect to retry</div>`;
+    `<div style="font-size:15px;color:var(--dim);">Click Connect to retry</div>`;
 
   const btn = document.getElementById('camConnBtn');
   btn.textContent = 'Connect';
@@ -2377,9 +1782,7 @@ log('Litho control ready — the stage connects automatically.', 'sys');
 startStageEvents();
 updateLimitsUI();
 updateCalBadge();
-updateCalUI();
 updateFocusUI();
-loadStateFromLocalStorage();
 _initProjDrop();
 
 // Auto-try camera server on load and keep polling
