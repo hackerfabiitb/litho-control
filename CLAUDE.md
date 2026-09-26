@@ -62,5 +62,8 @@
   `E` holds them powered at idle, which squeals. Keep that behaviour in any
   firmware change. When the user allows a test move, keep it tiny (they chose
   ±10 steps) and return to the start position.
+- Limit switches: X → D9, Y → D10, Z → D11 (normally open to GND, pull-ups;
+  1 = open, 0 = pressed). Each axis's two ends share one pin. The firmware
+  only reports them (`LS` lines); nothing stops at them yet.
 - Flash with the IDE's bundled arduino-cli (path in `xyz_stage/README.md`).
   Back up the existing flash with avrdude before overwriting a sketch.

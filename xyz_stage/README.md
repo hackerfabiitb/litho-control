@@ -27,6 +27,7 @@ by `ui/server.py` and `ui/start.ps1`; they remain in git history.
 | shield | Arduino CNC Shield V3 |
 | drivers | 3 × DRV8825 (all share enable pin 8, active LOW). Current limit: I = 2 × Vref |
 | pins (as used by `xyz1.ino`) | X step 3 / dir 6, Y step 2 / dir 5, Z step 4 / dir 7, enable 8 |
+| limit switches | X → D9, Y → D10, Z → D11; normally open, to GND, with pull-ups (1 = open, 0 = pressed). D12 is read too but unused |
 | baud | 115200 |
 
 The pins follow the common CNC Shield V3 layout, with X and Y swapped: the
@@ -59,6 +60,29 @@ pick. Only one program can hold COM4 at a time. Before running
   for the rest.
 - **Motor toggle:** "Motors released when idle (quiet)" by default; see
   [Driver power](#driver-power).
+
+## Limit switches
+
+The firmware **reports** the switches but doesn't act on them yet: nothing
+stops a move at a switch.
+
+- **When it reports:** it sends `LS D9=1 D10=1 D11=1 D12=1` at boot, in reply
+  to the `LS` command, and whenever a pin changes and stays changed for
+  10 ms. Values are raw levels: 1 = open, 0 = pressed.
+- **Between moves only:** moves block the firmware's main loop, so changes
+  are only reported between moves.
+- **Both ends share a pin:** the shield wires each axis's `-` and `+` headers
+  in parallel, so one pin can't tell which end was hit. The direction of the
+  move that triggered it can.
+
+To watch them live while toggling by hand:
+
+```powershell
+.\.venv\Scripts\python.exe xyz_stage\limit_switches.py      # Ctrl+C to stop
+```
+
+It goes through `ui/server.py` if that's running, which owns COM4, and
+opens the port itself otherwise.
 
 ## Driver power
 
@@ -118,6 +142,27 @@ The EEPROM couldn't be backed up. The Uno's bootloader returns flash when
 asked for EEPROM.
 
 ## Log
+
+### 2026-09-26 — limit switches checked by hand — WORKING
+
+**Setup.** Added limit switch reporting to `xyz1` (see
+[Limit switches](#limit-switches)) and flashed it, releasing COM4 through
+`/stage/disconnect` for the upload. Then ran `limit_switches.py` while the
+user pressed each switch.
+
+**Result.** All three switches work:
+- each changed only its own pin, 1 → 0 on press and back on release;
+- X on D9 (3 presses), Y on D10 (6), Z on D11 (4);
+- D12 never changed, so Z is wired to D11, the CNC Shield V3 default;
+- no chatter within the 10 ms debounce.
+
+Twice, a press and its release reached the script together (same
+timestamp), meaning a tap of only a few tens of ms; both edges were still
+caught.
+
+**Not tested:** whether each axis has one switch or two (both ends share a
+pin). Nothing acts on the switches yet; homing or stopping at them is still
+to do.
 
 ### 2026-09-25 — DRV8825 squeal — idle FIXED, during moves OPEN (hardware)
 

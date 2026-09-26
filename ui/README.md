@@ -65,7 +65,7 @@ doesn't change what the projector shows.
 | endpoint | |
 | --- | --- |
 | `GET /` | the page (`index.html`) |
-| `GET /stage/events` | server-sent events: `status` (JSON: `connected`, `port`, `idle_mode`, `error`), `replay` (cached state lines for a newly opened page: POS, LIMITS, CAL…, FOCUS) and `line` (every line from the firmware) |
+| `GET /stage/events` | server-sent events: `status` (JSON: `connected`, `port`, `idle_mode`, `error`), `replay` (cached state lines for a newly opened page: POS, LIMITS, CAL…, FOCUS, LS limit switches) and `line` (every line from the firmware) |
 | `GET /stage/status` | the status JSON |
 | `POST /stage/send` | `{"line": "J X 10"}`: one firmware command (protocol in `xyz_stage/litho-ui_README.md`) |
 | `POST /stage/connect`, `POST /stage/disconnect` | take or release COM4. Connecting is the default; release it to flash firmware |

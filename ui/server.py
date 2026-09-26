@@ -165,7 +165,7 @@ class Stage(threading.Thread):
             key = "CAL INFO"
         elif line in ("CALIBRATED", "UNCALIBRATED"):
             key = "CALSTATE"
-        elif words and words[0] in ("POS", "LIMITS", "FOCUS"):
+        elif words and words[0] in ("POS", "LIMITS", "FOCUS", "LS"):
             key = words[0]
         else:
             return

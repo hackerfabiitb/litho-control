@@ -11,6 +11,17 @@ const int STEP_PINS[3] = {3, 2, 4}; // X, Y, Z
 const int DIR_PINS[3]  = {6, 5, 7}; // X, Y, Z
 const int sys_en = 8;
 
+// --- Limit switches (read-only for now: reported, not acted on) ---
+// CNC Shield V3 wires its X / Y / Z endstop headers (both - and + of an
+// axis in parallel) to D9 / D10 / D11. Some shield revisions and GRBL 1.1
+// use D12 for Z, so D12 is read too. INPUT_PULLUP: a switch to GND reads 1
+// open, 0 closed.
+const int SW_PINS[4] = {9, 10, 11, 12};
+byte swReported  = 0xFF;   // last state sent (bit i = SW_PINS[i] level)
+byte swCandidate = 0xFF;   // state seen most recently, waiting out bounce
+unsigned long swSince = 0;
+const unsigned long SW_DEBOUNCE_MS = 10;
+
 // --- EEPROM Layout (43 bytes) ---
 // 0:     magic (0xAB = valid state saved)
 // 1-12:  positions  — 3 × long (4 bytes each)
@@ -60,6 +71,7 @@ void setup() {
     pinMode(STEP_PINS[i], OUTPUT);
     pinMode(DIR_PINS[i], OUTPUT);
   }
+  for (int i = 0; i < 4; i++) pinMode(SW_PINS[i], INPUT_PULLUP);
 
   Serial.begin(115200);
 
@@ -112,6 +124,8 @@ void setup() {
   Serial.println(isCalibrated ? "CALIBRATED" : "UNCALIBRATED");
   if (focusSet) { Serial.print("FOCUS "); Serial.println(focusZ); }
   else          { Serial.println("FOCUS UNSET"); }
+  swReported = swCandidate = readSwitches();
+  sendSwitches();
   Serial.println("READY");
 }
 
@@ -119,6 +133,42 @@ void setup() {
 void loop() {
   if (readSerial()) {
     processCommand(String(cmdBuf));
+  }
+  pollSwitches();
+}
+
+// ============================================================
+//  Limit switches
+// ============================================================
+
+byte readSwitches() {
+  byte s = 0;
+  for (int i = 0; i < 4; i++)
+    if (digitalRead(SW_PINS[i]) == HIGH) s |= (1 << i);
+  return s;
+}
+
+// "LS D9=1 D10=1 D11=0 D12=1" — raw pin levels (1 = open with the pull-up)
+void sendSwitches() {
+  Serial.print("LS");
+  for (int i = 0; i < 4; i++) {
+    Serial.print(" D"); Serial.print(SW_PINS[i]);
+    Serial.print("=");  Serial.print((swReported >> i) & 1);
+  }
+  Serial.println();
+}
+
+// Report a change once it has been stable for SW_DEBOUNCE_MS. Only runs
+// between commands: moves block the loop, so nothing is sent mid-move.
+void pollSwitches() {
+  byte s = readSwitches();
+  unsigned long now = millis();
+  if (s != swCandidate) {
+    swCandidate = s;
+    swSince = now;
+  } else if (s != swReported && now - swSince >= SW_DEBOUNCE_MS) {
+    swReported = s;
+    sendSwitches();
   }
 }
 
@@ -148,6 +198,14 @@ void processCommand(String line) {
 
   if (line.startsWith("CAL")) {
     handleCal(line.length() > 3 ? line.substring(4) : String(""));
+    return;
+  }
+
+  // LS — report the limit switch pins now (they are also sent on change).
+  // Checked before the switch below, where 'L' alone means "send limits".
+  if (line == "LS") {
+    swReported = swCandidate = readSwitches();
+    sendSwitches();
     return;
   }
 
