@@ -111,6 +111,8 @@ def refresh_rate(monitor):
 
 PATTERN_HELP = """black, white, grayN (N=0..255), grid (labelled, lines every 240 px),
 vbarsN / hbarsN (N-px alternating columns / rows), checkerN, hramp, vramp,
+linesN / gapsN (2-px white lines on black / black lines on white, every N px),
+dotsN (2x2 white dots on black, every N px in x and y),
 marker (one white 256x256 square at x=1024, y=512 — used by calibrate)"""
 
 
@@ -141,6 +143,18 @@ def make_pattern(name, width, height):
         k = int(name[7:])
         yy, xx = np.mgrid[0:height, 0:width]
         img[:] = ((yy // k + xx // k) % 2 * 255).astype(np.uint8)
+    elif name.startswith("lines"):
+        img[:, ::int(name[5:])] = 255
+        img[:, 1::int(name[5:])] = 255
+    elif name.startswith("gaps"):
+        img[:] = 255
+        img[:, ::int(name[4:])] = 0
+        img[:, 1::int(name[4:])] = 0
+    elif name.startswith("dots"):
+        k = int(name[4:])
+        for dy in (0, 1):
+            for dx in (0, 1):
+                img[dy::k, dx::k] = 255
     elif name == "hramp":
         img[:] = np.linspace(0, 255, width).astype(np.uint8)[None, :]
     elif name == "vramp":

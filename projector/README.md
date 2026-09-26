@@ -68,9 +68,13 @@ columns / rows), `checkerN`, `hramp`, `vramp`, `marker`.
   256 px `marker` square resolves it. Black is subtracted before searching for
   the marker, because stuck-on bands would otherwise look like marker pixels.
   The x axis ignores the stray-light surround, which carries faint ghost copies
-  of the bars. Measured mapping (2026-09-25):
-  `cam_x = 0.4517·x + 325`, `cam_y = 0.457·y − 146`. The camera sees input
-  x 0–3564 and y 318–2160, so the right ~280 px and the top ~320 px are out of view.
+  of the bars. Measured mapping (2026-09-26, after the flex reseat):
+  `cam_x = 0.4516·x + 341`, `cam_y = 0.4525·y − 136`. The camera sees input
+  x 0–3529 and y 300–2160: the **bottom-left ~79 %** of the image. The right
+  ~310 px (mirror columns ~1764–1920) and the top ~300 px are out of view and
+  never measured. The fault bands run the full height, so the top strip hides
+  nothing new, but a fault in the last one or two column blocks would be
+  missed.
 - **Scoring.** `dmd_blocks` computes two numbers per camera column:
   - the black level: black ÷ white
   - the stripe contrast: amplitude of the stripe-frequency component, which
@@ -99,7 +103,82 @@ Replies have a 3-byte header (`14 <len> 00`), then little-endian data.
 
 ## Debugging log
 
-### 2026-09-26 — "Ready; Curtain", no light, after reseating the DMD flex: DMD init error — OPEN
+### 2026-09-26 — stripes after the flex reseat: moved, and fail on unbalanced rows — OPEN
+
+**Context.** A second, careful reseat of the DMD flex cleared the DMD init
+error (entry below) and the image came back, but with glitch bands again.
+
+**Result** (`dmd_calibrate.py`, then `dmd_blocks.py`, 8 repeats, all
+identical). The bands **moved**:
+
+| band (input px) | mirror cols | 2026-09-25 | on black | on 64-px horizontal stripes |
+| --- | --- | --- | --- | --- |
+| 1408–1664 | 704–832 | clean | dark (correct) | stripes lost; stale tiles on white/gray |
+| 1664–1920 | 832–960 | bad | clean | clean |
+| 2432–2688 | 1216–1344 | bad | clean | clean |
+| 2944–3200 | 1472–1600 | bad | bright, vertical-line noise (black level 0.29) | partly lost |
+| 3200–3456 | 1600–1728 | clean | stuck bright (0.37) | lost |
+| 3456–3529+ | 1728–1764+ | bad | grey (0.15) | lost; rest out of view |
+
+A healthy block reads 0.05 on black and 0.38 stripe contrast.
+
+**Content dependence** (`dmd_probe.py`; new patterns `linesN`, `gapsN`,
+`dotsN` in `display.py`):
+
+![bad blocks under 10 patterns](docs/2026-09-26_content_dependence.jpg)
+![sparse lines and dots](docs/2026-09-26_sparse_patterns.jpg)
+
+*Crops of camera x 900–1936. Red ticks: input x 1408, 1664, 2944, 3200, 3456.*
+
+- **Clean everywhere, bad blocks included:** vertical bars at 64, 8 and 2 px,
+  and checkerboards at 128 and 8 px.
+- **Broken:** black, white, gray128, horizontal bars at 64 and 8 px, 2-px
+  lines every 16/64/256 px on black, 2×2 dots every 16/64 px, and black gaps
+  every 16/64/256 px on white.
+- **Run length isn't what matters:** `vbars64` (32-mirror runs) is clean,
+  `lines16` (7-mirror dark runs) is not. What the clean patterns share is that
+  about half the pixels in every row of every block are on. Rows that are
+  mostly off, mostly on or uniform fail.
+
+**Interpretation.** Moving with the reseat confirms the fault is in the
+controller-to-DMD connection. The dependence on the on/off balance of each
+row is the signature of a high-speed serial link with **baseline wander**: on
+marginal lanes, unbalanced data drifts the receiver's threshold and bits are
+misread. Each band is one data channel (a 128-mirror column group), so each
+contact or trace in the flex is marginal on its own.
+
+**Software options.**
+- **Content tricks: no.** Keeping a bad block working needs ~50 % of its
+  pixels on in every row. That's usable for test patterns, not for masks.
+- **Avoid the bad columns: partly.** Input x 0–1408 and 1664–2944 (1344
+  mirror columns, full height) show any content correctly. Sending black
+  keeps 1408–1664 dark, but **2944 onward lights up when sent black**, so it
+  would expose resist wherever the mask is dark. That region has to be
+  blocked optically (a knife edge in an image plane) or kept off the sample.
+- **Tune the DMD's high-speed receivers: maybe, untested.** The GUI library
+  exposes the DMD's HSSI registers: common-mode (`Vcm`), bias trims
+  (`ItrimIbuf`, `ItrimDcc`), sampling phase (`PhaseInterpolatorCode`), and
+  per-macro and per-lane enables. They're written at every boot from flash,
+  so experiments revert on a power cycle, but the registers are undocumented.
+  A scan would set a value, show `hbars64` and `black`, score with
+  `dmd_blocks`, and repeat. It needs the GUI closed and the controller driven
+  over its HID interface (`VID_0451&PID_7540` MI_01) with the GUI's
+  `DLPComposer` libraries. Not started; it needs the user's go-ahead.
+
+**Next steps.**
+1. Hardware, the real fix: inspect both flex ends for damaged, dirty or
+   oxidised contacts. Clean with isopropyl alcohol, reseat, and rerun
+   `dmd_blocks.py` after each attempt; the bands should shrink or move. If
+   they keep moving between reseats, replace the flex (ask TI via E2E for the
+   part).
+2. Meanwhile, keep exposures in input x 0–1408 / 1664–2944, and block or avoid
+   x ≥ 2944.
+3. Optional: the HSSI register scan above.
+
+### 2026-09-26 — "Ready; Curtain", no light, after reseating the DMD flex: DMD init error — FIXED
+
+**Resolution.** A second, careful reseat cleared it, and the image came back
+(stripes: entry above).
 
 **Symptom.** To fix the stripe fault (entry below), the DMD ribbon cables were
 reseated. Afterwards the GUI again shows "EVM Status: Ready; Curtain" and the
@@ -293,6 +372,6 @@ which argues against an HDMI or source problem.
 No baseline from before 2026-09-25 exists, so it is not proven that the fault
 started with the cable swap.
 
-**2026-09-26:** after the flex was reseated, the controller reports a DMD init
-error and shows no image at all (entry above), so the stripes can't be
-rechecked until that is fixed.
+**2026-09-26:** the first reseat caused a DMD init error. After the second,
+the bands moved, and they turn out to fail on rows with unbalanced on/off
+content. See the 2026-09-26 stripes entry at the top of this log.
