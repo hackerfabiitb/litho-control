@@ -212,7 +212,7 @@ asked for EEPROM.
 
 ## Log
 
-### 2026-09-26 — homing: X done, Y switch detached, Z not started — OPEN
+### 2026-09-26 — homing: X on its switch, Y and Z zeroed by hand — OPEN
 
 **Steps/mm.** Microstepping isn't in the firmware; it's set by jumpers. A
 400-step move on Y turned the shaft 2 full revolutions, so it's full step.
@@ -258,10 +258,19 @@ position was made its zero: `homing.py --set-zero Y --end + --travel-mm 11`.
 - **Later runs** skip Y and trust the saved position; you confirmed the stage
   isn't moved between runs.
 
+**Z zeroed by hand (interim).** You ran `homing.py` for Z. Its switch is
+also mounted too far away to be pressed before the end, so the run found no
+switch and saved nothing. Z had reached its + end, so that point was made
+its zero: `homing.py --set-zero Z --end + --travel-mm 12`.
+- **Limits:** −4800..0, so 12 mm towards −.
+- **Why the full 12 mm:** Z is at the end itself, not 1 mm back like Y.
+- **Read back from the firmware:** `POS 200 0 0` and
+  `LIMITS 0 4800 -4400 0 -4800 0`. All three axes now have soft limits.
+
 **Next:**
-1. Mount Y's switch where the carriage presses it before the hard stop, and
-   check it with `limit_switches.py` by hand.
-2. Run `homing.py --discover --axes Y`, then `homing.py --axes Z`.
+1. Mount the Y and Z switches where the carriage presses them before the
+   hard stops, and check them with `limit_switches.py` by hand.
+2. Run `homing.py --discover --axes Y Z`.
 
 **Lesson:** a seek towards a switch has no protection if the switch is
 missing; it only stops at its step limit (1.2 × travel + slack). A later
