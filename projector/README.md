@@ -1,8 +1,9 @@
 # projector — TI DLP471TPEVM
 
-The projector is a TI **DLP471TPEVM**. The GUI's EVM Selection confirms it,
-and it enumerates on USB as a DLPC7540 controller. It drives a 0.47" DLP471TP
-4K UHD DMD and takes a 3840×2160 input.
+The projector is a TI **DLP471TPEVM**. The GUI's EVM Selection confirms it.
+Its controller is a **DLPC6540** (GUI Information page; the USB PID is 7540,
+which is not the controller's name) with a DLPA3005 LED driver. It drives a
+0.47" DLP471TP 4K UHD DMD and takes a 3840×2160 input.
 
 The mirror-column numbers in this README assume a 1920×1080 mirror array with
 XPR pixel shifting, where 2 input px correspond to about 1 mirror in each
@@ -34,6 +35,7 @@ client at a time.
 | `dmd_blocks.py` | alternates black / horizontal stripes, scores every column and lists the faulty column ranges |
 | `dmd_probe.py` | shows any list of patterns and saves what the camera sees, plus a contact sheet |
 | `flicker.py` | `waveform`: the illumination over time (camera at 920 fps, 34 µs) and the flicker it predicts for any exposure; `sweep`: measured flicker against camera fps and exposure |
+| `evm_status.py` | decodes status replies copied from the DLP EVM GUI's Command Log (System Status, DMD Info, DMD Error Status Register) into named flags |
 | `hdmi.ps1` | logs monitor plug/unplug events to `C:\hdmi-log.csv` (watches for HDMI dropouts) |
 
 Outputs go to `projector/captures/<timestamp>_<tag>/`, which is git-ignored.
@@ -79,7 +81,64 @@ columns / rows), `checkerN`, `hramp`, `vramp`, `marker`.
   (stripe contrast ≈ 0.2 on the left, ≈ 0.4 on the right), so a single global
   median would flag the edges.
 
+## Reading the controller's status
+
+The GUI shows only a few flags on its pages; the full status is in the
+replies on **Debug → Command Log** ("Receive Data"). Copy a reply and decode
+it:
+
+```powershell
+.\.venv\Scripts\python.exe projector\evm_status.py system "14 0C 00 00 00 00 00 04 00 40 00 00 00 00 00"
+```
+
+`system` is the reply to **Read System Status** (`D4 06 00 00`), `dmdinfo`
+to **Read Dmd Info**, `dmderr` to **Read Dmd Error Status Register**. The bit
+layouts come from the GUI's own command library
+(`DLPComposer.Commands.DLPC654x.dll`, GUI 3.2.0.7), read by reflection.
+Replies have a 3-byte header (`14 <len> 00`), then little-endian data.
+
 ## Debugging log
+
+### 2026-09-26 — "Ready; Curtain", no light, after reseating the DMD flex: DMD init error — OPEN
+
+**Symptom.** To fix the stripe fault (entry below), the DMD ribbon cables were
+reseated. Afterwards the GUI again shows "EVM Status: Ready; Curtain" and the
+LEDs don't light. Reseating the LED cables (yesterday's fix) doesn't help. The
+Information page shows **DMD Error** ticked; every other error box is clear.
+
+**Decoded** from the Command Log with `evm_status.py`:
+
+| command | reply | meaning |
+| --- | --- | --- |
+| Read System Status | `14 0C 00` `00000000` `04004000` `00000000` | state word 0: nothing set (not `Lamplit`, sequencer not locked). Error word: **`DmdInitErr`** (bit 22) and `SyncvalStat` (bit 2). No `LampHwErr`, no `Dlpa3005CommErr`, no `ProductConfigurationFailed` |
+| Read Dmd Info | `94 00 0D 60` `04 00 07 00` … | DmdId 0x600D0094, FuseId 0x00070004, name `01000001`: not blank, but there's no known-good reading to compare with |
+| Read Illumination Enable | `00` | LEDs off; the GUI's Write Illumination Enable (`01`) was accepted, but the light stays off |
+| Read DLPA3005 Illumination Current | `96 00` ×3 | 150 on each LED, unchanged |
+| Read Dmd Temperature | `18` / `17` | 24 / 23 °C, normal |
+
+**Interpretation.** Same symptom as 2026-09-25, different cause. The
+controller failed to bring up the DMD at boot (`DmdInitErr`), so it keeps the
+curtain up and the LEDs off to protect the DMD. The LED driver reports no
+fault and still holds its currents, so the LEDs and their wiring are not the
+problem this time. The reseat is the only change, so the DMD flex (seating,
+latch, orientation, a bent contact or a creased cable) is the prime suspect.
+It is the same connection the stripe fault pointed at, now failing outright
+instead of corrupting four blocks. `SyncvalStat` has no documented meaning in
+the GUI; it may just report the input sync state.
+
+**Next steps.**
+1. Unplug the EVM's power supply (not just USB) before touching the flex.
+2. Reseat the DMD flex at both ends: straight in, full depth, latch fully
+   closed, contacts facing the right way, no creases or kinks.
+3. Power on from the supply. The DMD is only initialised at boot, so a power
+   cycle is needed after every reseat. On Information, click **Get**: DMD
+   Error should be clear, and the light should come back.
+4. If it isn't, run **Read Dmd Error Status Register** (GUI search) and decode
+   it with `evm_status.py dmderr`. `HssiPktError` would point at the
+   high-speed data lanes, and `LsifPktError` or `LsifParityError` at the
+   low-speed control link.
+5. If careful reseats don't clear it, suspect a damaged flex, connector or
+   DMD, and ask on TI E2E with the decoded registers.
 
 ### 2026-09-25 — why the camera sees flicker: 240 Hz illumination with a dark gap — EXPLAINED
 
@@ -214,7 +273,7 @@ checkerboard come out essentially clean, even inside the bands:
   full height, and in one band show image data that was never sent. That
   points to mirrors not being loaded or reset.
 
-This points to the **data or control path from the DLPC7540 to the DMD**. The
+This points to the **data or control path from the DLPC6540 to the DMD**. The
 likely candidates are the flex cable and its connectors, or the DMD seating in
 its socket or clamp; moving the board around during the cable swap could have
 disturbed either. USB carries only control commands, so the USB cable can't
@@ -233,3 +292,7 @@ which argues against an HDMI or source problem.
 
 No baseline from before 2026-09-25 exists, so it is not proven that the fault
 started with the cable swap.
+
+**2026-09-26:** after the flex was reseated, the controller reports a DMD init
+error and shows no image at all (entry above), so the stripes can't be
+rechecked until that is fixed.
