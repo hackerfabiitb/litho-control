@@ -274,3 +274,56 @@ leaves the Windows HighGUI backend stretching the image to fill the window.
   them, the camera's hardware trigger (`TriggerMode=On`, `TriggerSource=Line1`)
   synced to the light source is the better fix; this project is the software
   fallback.
+
+## Debugging log
+
+### 2026-10-03 — glare / haze over the whole feed after reassembling the litho — OPEN
+
+**Symptom.** After the litho optics were reassembled, the deflickered feed in
+the UI shows a big bright glare.
+
+**Conditions.** The projector's display wasn't extended (only `DISPLAY1` in
+the desktop), so the projector was showing its own no-signal checkerboard.
+Measured through `ui/server.py`'s `/stream` with the usual keep rule.
+
+**Measured.**
+
+![400 us and 150 us](docs/2026-10-03_glare.jpg)
+
+| | value |
+| --- | --- |
+| 400 µs (UI default) | 86 % of pixels saturated |
+| 150 µs: bright checker squares / dark squares | 156 / 92: dark is **59 %** of bright (black was ~5 % of white on 2026-09-26) |
+| 150 µs: outside the projected image | 127, **81 %** of the bright squares |
+| haze (local minimum, blurred) | rises steadily to the **bottom-left corner** (129 there, 71 at the top right) |
+| room light | none: frames in the projector's dark gap read mean 0 at 400 µs |
+| geometry | the whole image is now inside the view, smaller, and rotated ~30° (edges at 59° mod 90); on 2026-09-26 it was axis-aligned and only the bottom-left 79 % was visible |
+
+**Interpretation.**
+- The haze is projector light that reaches the camera without forming the
+  image: it fills the frame outside the projected rectangle, and there is no
+  room light at these exposures.
+- It isn't centred on the image, as a back-reflection of the image off a lens
+  or beam-splitter face would be. It grows towards one corner with a soft,
+  cloudy texture, the typical look of flare from a bright source just
+  outside the field (bottom-left of the camera view): the projector lens, a
+  lit mount or tube wall, or a gap letting illumination around a baffle.
+- The image is also visibly soft, so focus may have moved in the
+  reassembly.
+- `projector/captures/calib.npz` and the column/band positions in
+  `projector/README.md` predate the new geometry (rotation and scale).
+
+**Next steps.**
+1. Extend the projector display (Win+P → Extend) so test patterns can be
+   shown. Then compare **black**, **white** and a **small white square**.
+   Haze present on black means illumination leaking past the DMD image
+   (stray or off-state light). Haze that follows the square means scatter or a
+   ghost of the projected light.
+2. Look along the optical path from the camera side for anything lit near the
+   bottom-left of the field. Shading it by hand (a card) while watching the
+   feed shows where the light enters.
+3. Check that baffles, tube covers and any polariser or filter in front of the
+   camera went back in, and that the beam splitter faces the right way.
+4. Refocus, then rerun `projector/dmd_calibrate.py` for the new geometry
+   (it assumes an axis-aligned image, so the ~30° rotation may need a new
+   calibration method).
