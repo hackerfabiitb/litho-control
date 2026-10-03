@@ -8,14 +8,24 @@ process, `server.py`.
 .\ui\start.ps1
 ```
 
-That starts the server in its own window and opens `http://localhost:8765` in
-Chrome, or Edge if Chrome is missing. Close the server window to stop it and
-release the camera.
+That runs the server **in the current terminal**, and opens
+`http://localhost:8765` in Chrome (or Edge if Chrome is missing) as soon as
+it answers. Errors and status stay visible there. **Ctrl+C** stops it and
+releases the camera and COM4. Arguments go to `server.py`, e.g.
+`.\ui\start.ps1 --monitor DISPLAY5`.
+
+The server starts even if some hardware is missing. It prints each problem
+once and keeps retrying every 3 s:
+
+| missing | printed | fix |
+| --- | --- | --- |
+| Uno | `[stage] expected one Arduino, found: none` | plug in the Uno's USB |
+| camera | `[camera] No Basler camera found…` | plug in the camera's USB3; close pylon Viewer and `camera\run.ps1` |
+| projector display | `projector display not found (… found: \\.\DISPLAY1 …)` | turn the projector on, then **Win+P → Extend**. Windows can see the projector and still leave it out of the desktop ("PC screen only"). Meanwhile projector commands answer 409 with this reason |
 
 Then:
 - **Stage:** nothing to do. The server finds the Uno by its USB ID (with
-  `xyz_stage/find_arduino.py`) and connects at startup. It retries every 3 s
-  if the board is missing or unplugged. The top bar shows
+  `xyz_stage/find_arduino.py`) and connects by itself. The top bar shows
   `connected · COM4`.
 - **Projector:** click **Projector** to load an image and project it.
 
@@ -119,6 +129,30 @@ Projector calls return once the change is on screen.
 - **Only one server at a time**, because it uses port 8765.
 
 ## Log
+
+### 2026-10-03 — start.ps1 runs in the current terminal; server starts without the projector
+
+- **Symptom:** `.\ui\start.ps1` opened a new window that printed an error and
+  closed before it could be read.
+- **Cause:** `server.py` exited at startup because `find_projector()` found
+  no projector monitor. Windows could see the projector (USB, and the
+  `DLP PICO 4K` monitor present as `DISPLAY5` on the NVIDIA card), but it
+  wasn't attached to the desktop; only `\\.\DISPLAY1` (the Dell) was. The
+  window came from `Start-Process`, which closes as soon as Python exits.
+- **Fixes:**
+  - `start.ps1` runs the server in the current terminal. A background job
+    opens the browser once the server answers. The job polls `127.0.0.1`,
+    because Windows PowerShell 5.1 tries `localhost` as IPv6 `::1` first and
+    times out (the server is IPv4 only). Tested in PowerShell 5.1 and 7 with
+    the browser stubbed out.
+  - The server starts without the projector display. It looks for it again
+    every 3 s and before each projector command, and meanwhile answers
+    projector commands with 409 and the reason. The page shows "projector
+    display not found" with the Win+P hint.
+  - Stage and camera errors print once per new problem, not on every 3 s
+    retry (the camera's used to repeat).
+- **Seen in the test:** the Uno and the Basler camera weren't on USB either
+  (no COM ports at all), so all three printed their "not found" lines.
 
 ### 2026-09-26 — litho-ui leftovers removed; log moved left; larger white text
 
