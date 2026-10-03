@@ -1506,13 +1506,16 @@ async function _refreshProjStatus() {
 function _setProjStatus(s) {
   projState = s.state;
   const active = s.state !== 'closed';
-  const label = { closed: 'desktop (no pattern window)', blank: 'blank (black)',
+  const label = !s.monitor ? 'projector display not found'
+              : { closed: 'desktop (no pattern window)', blank: 'blank (black)',
                   image: `${s.image} · ${s.fit}` }[s.state];
   document.getElementById('projDot').className = 'proj-status-dot' + (active ? ' on' : '');
   document.getElementById('projStatusText').textContent = label;
   document.getElementById('projPaneInfo').textContent = label;
-  document.getElementById('projMonitorInfo').textContent =
-    `${s.monitor.replace(/^\\\\\.\\/, '')} · ${s.width}×${s.height}`;
+  document.getElementById('projMonitorInfo').textContent = s.monitor
+    ? `${s.monitor.replace(/^\\\\\.\\/, '')} · ${s.width}×${s.height}`
+    : `Not found (${s.error}). If the projector is on, press Win+P → Extend; ` +
+      'the server checks again every 3 s.';
   document.getElementById('projBtn').textContent = s.state === 'image' ? 'Send Image Again →' : 'Project Image →';
   document.getElementById('projStopBtn').style.display = active ? '' : 'none';
 }

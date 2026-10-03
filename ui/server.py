@@ -183,7 +183,11 @@ class Stage(threading.Thread):
                 port = find_arduino()
                 ser = serial.Serial(port, BAUD, timeout=0.2)
             except Exception as exc:         # no Uno, or COM4 held elsewhere
-                self.error = str(exc).splitlines()[0][:200]
+                error = str(exc).splitlines()[0][:200]
+                if error != self.error:      # once per new problem, not per retry
+                    print(f"[stage] {error} (retrying every {self.RETRY_S:.0f} s)",
+                          file=sys.stderr, flush=True)
+                self.error = error
                 self.emit("status", json.dumps(self.status()))
                 time.sleep(self.RETRY_S)
                 continue
@@ -192,7 +196,7 @@ class Stage(threading.Thread):
             self.ser, self.port, self.error = ser, port, None
             self.idle_mode = "release"
             self.emit("status", json.dumps(self.status()))
-            print(f"[stage] connected on {port}")
+            print(f"[stage] connected on {port}", flush=True)
             buf = b""
             try:
                 while self.want:
@@ -296,6 +300,7 @@ class Camera(threading.Thread):
                 cam = open_camera(exposure_us=self.exposure_us, full=True,
                                   verbose=False)
                 self.connected, self.error = True, None
+                print("[camera] open", flush=True)
                 for _, frame, _ in grab_frames(cam, pylon.GrabStrategy_LatestImageOnly):
                     if self.stop_flag.is_set():
                         break
@@ -311,8 +316,11 @@ class Camera(threading.Thread):
                             self.stream.put(encode(frame))
             except Exception as exc:         # busy camera, unplugged, ...
                 self.connected = False
-                self.error = str(exc).splitlines()[0][:200]
-                print(f"[camera] {self.error}", file=sys.stderr)
+                error = str(exc).splitlines()[0][:200]
+                if error != self.error:      # once per new problem, not per retry
+                    print(f"[camera] {error} (retrying every 3 s)",
+                          file=sys.stderr, flush=True)
+                self.error = error
                 self.stop_flag.wait(3.0)
             finally:
                 if cam is not None:
@@ -354,20 +362,45 @@ def compose(src, fit, width, height):
 
 class Projector(threading.Thread):
     """Owns the full-screen OpenCV window. HighGUI windows must be created and
-    pumped by one thread, so every change goes through a queue."""
+    pumped by one thread, so every change goes through a queue.
 
-    def __init__(self, monitor):
+    The projector's monitor may be missing at startup (Windows set to "PC
+    screen only", or the projector off). The stage and camera don't need it,
+    so the server starts anyway and looks for the monitor again every
+    RETRY_S seconds, and before each command."""
+
+    RETRY_S = 3.0
+
+    def __init__(self, monitor_name=None):
         super().__init__(daemon=True)
-        self.monitor = monitor
+        self.monitor_name = monitor_name     # --monitor, else the one non-primary
+        self.monitor = None
+        self.error = None
+        self._found_at = 0.0
         self.commands = queue.Queue()
         self.source = None
         self.image_name = None
         self.fit = "native"
         self.state = "closed"                # closed | blank | image
+        self.find()
+
+    def find(self):
+        """Look for the projector's monitor; True if it is there."""
+        had = self.monitor
+        try:
+            self.monitor, self.error = find_projector(self.monitor_name), None
+        except RuntimeError as exc:
+            self.monitor, self.error = None, str(exc)
+        self._found_at = time.monotonic()
+        if self.monitor and not had:
+            m = self.monitor
+            print(f"projector: {m.name} {m.width}x{m.height}", flush=True)
+        return self.monitor is not None
 
     def status(self):
         m = self.monitor
-        return {"monitor": m.name, "width": m.width, "height": m.height,
+        return {"monitor": m and m.name, "width": m and m.width,
+                "height": m and m.height, "error": self.error,
                 "state": self.state, "image": self.image_name, "fit": self.fit,
                 "image_size": None if self.source is None
                 else [int(self.source.shape[1]), int(self.source.shape[0])]}
@@ -388,6 +421,9 @@ class Projector(threading.Thread):
             except queue.Empty:
                 if win is not None:
                     cv2.waitKey(1)           # keep the window responsive
+                elif (self.monitor is None
+                      and time.monotonic() - self._found_at > self.RETRY_S):
+                    self.find()
                 continue
             try:
                 if cmd == "close":
@@ -396,6 +432,8 @@ class Projector(threading.Thread):
                         win = None
                     self.state = "closed"
                     continue
+                if win is None and not self.find():
+                    continue                 # no projector: status carries the error
                 if win is None:
                     win = PatternWindow(self.monitor, title="litho-projector").__enter__()
                 m = self.monitor
@@ -410,27 +448,32 @@ class Projector(threading.Thread):
 
 
 class Mirror(threading.Thread):
-    """Screen capture of the projector's display, while anyone is watching."""
+    """Screen capture of the projector's display, while anyone is watching
+    and the projector's monitor is there."""
 
-    def __init__(self, monitor, width=1280, fps=5.0):
+    def __init__(self, projector, width=1280, fps=5.0):
         super().__init__(daemon=True)
-        self.monitor = monitor
+        self.projector = projector
         self.width = width
         self.period = 1.0 / fps
         self.stream = Latest()
 
     def run(self):
         import mss
-        m = self.monitor
-        rect = {"left": m.x, "top": m.y, "width": m.width, "height": m.height}
-        height = round(self.width * m.height / m.width)
         with mss.MSS() as grabber:
             while True:
-                if not self.stream.clients:
+                m = self.projector.monitor
+                if not self.stream.clients or m is None:
                     time.sleep(0.2)
                     continue
+                rect = {"left": m.x, "top": m.y, "width": m.width, "height": m.height}
+                height = round(self.width * m.height / m.width)
                 t0 = time.perf_counter()
-                shot = np.asarray(grabber.grab(rect))[:, :, :3]
+                try:
+                    shot = np.asarray(grabber.grab(rect))[:, :, :3]
+                except Exception:            # display removed mid-grab
+                    time.sleep(1.0)
+                    continue
                 small = cv2.resize(shot, (self.width, height), interpolation=cv2.INTER_AREA)
                 self.stream.put(encode(small))
                 time.sleep(max(0.0, self.period - (time.perf_counter() - t0)))
@@ -482,6 +525,12 @@ def make_handler(stage, camera, projector, mirror):
             finally:
                 with latest.cond:
                     latest.clients -= 1
+
+        def _projector_reply(self, st):
+            if st["monitor"] is None and st["state"] == "closed" and st["error"]:
+                return self._json({**st, "error": "projector display not found: "
+                                   + st["error"]}, 409)
+            self._json(st)
 
         def _events(self):
             """Server-sent events from the stage: status first, then the
@@ -575,17 +624,17 @@ def make_handler(stage, camera, projector, mirror):
                                            "(PNG, JPG, BMP, TIFF)"}, 400)
                     projector.source, projector.image_name = img, q.get("name", "image")
                     projector.fit = fit
-                    self._json(projector.do("show"))
+                    self._projector_reply(projector.do("show"))
                 elif url.path == "/projector/fit":
                     fit = json.loads(self._body() or b"{}").get("fit")
                     if fit not in FITS:
                         return self._json({"error": f"fit must be one of {FITS}"}, 400)
                     projector.fit = fit
                     if projector.source is not None and projector.state == "image":
-                        return self._json(projector.do("show"))
+                        return self._projector_reply(projector.do("show"))
                     self._json(projector.status())
                 elif url.path in ("/projector/blank", "/projector/close"):
-                    self._json(projector.do(url.path.rsplit("/", 1)[1]))
+                    self._projector_reply(projector.do(url.path.rsplit("/", 1)[1]))
                 else:
                     self._send(404, b"not found", "text/plain")
             except (ValueError, json.JSONDecodeError) as exc:
@@ -604,19 +653,22 @@ def main():
     p.add_argument("--monitor", default=None, help="projector, e.g. DISPLAY5")
     args = p.parse_args()
 
-    monitor = find_projector(args.monitor)
     stage = Stage()
     camera = Camera(args.exposure, args.keep_frac, args.max_hold)
-    projector = Projector(monitor)
-    mirror = Mirror(monitor)
+    projector = Projector(args.monitor)
+    mirror = Mirror(projector)
     for t in (stage, camera, projector, mirror):
         t.start()
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port),
                                  make_handler(stage, camera, projector, mirror))
     server.daemon_threads = True
-    print(f"UI on http://localhost:{args.port}   projector {monitor.name} "
-          f"{monitor.width}x{monitor.height}   Ctrl+C to stop")
+    print(f"UI on http://localhost:{args.port}   Ctrl+C to stop", flush=True)
+    if projector.monitor is None:
+        print(f"projector display not found ({projector.error}).\n"
+              f"  Stage and camera work without it. If the projector is on, press"
+              f" Win+P -> Extend; the server checks again every"
+              f" {projector.RETRY_S:.0f} s.", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
