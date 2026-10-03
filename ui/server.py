@@ -23,7 +23,8 @@ POST /config                 {"exposure_us", "keep_frac", "max_hold"} (any subse
 GET  /focus_score            Laplacian variance of the latest shown camera frame
 GET  /projector/stream       what the projector displays, captured from its
                              screen, MJPEG — so it also shows anything else
-                             that ends up on the projector
+                             that ends up on the projector, and the mouse
+                             pointer when it is on the projector's screen
 GET  /projector/status       JSON
 POST /projector/image?fit=native|contain|cover|stretch&name=...
                              body: an image file; shown full-screen on the
@@ -31,6 +32,8 @@ POST /projector/image?fit=native|contain|cover|stretch&name=...
 POST /projector/fit          {"fit": ...} re-fit the current image
 POST /projector/blank        show black (window stays up)
 POST /projector/close        close the window; the projector shows the desktop
+POST /shutdown               stop the server cleanly (ui\\start.ps1 sends it
+                             when the UI window is closed)
 
 The camera runs the same keep rule as camera\\run.ps1 (camera/deflicker.py):
 full sensor, 400 us, keep frames >= 0.8 x the recent top, never hold a frame
@@ -38,6 +41,7 @@ longer than 0.5 s. While the server runs, no other program can open the camera.
 """
 
 import argparse
+import ctypes
 import json
 import os
 import queue
@@ -45,6 +49,7 @@ import sys
 import threading
 import time
 from collections import deque
+from ctypes import wintypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -447,6 +452,34 @@ class Projector(threading.Thread):
                 done.set()
 
 
+class _CURSORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("flags", wintypes.DWORD),
+                ("hCursor", wintypes.HANDLE), ("ptScreenPos", wintypes.POINT)]
+
+
+def cursor_position():
+    """The mouse pointer's position on the desktop in physical pixels (this
+    process is per-monitor DPI aware, like the monitor rectangles), or None
+    while the pointer is hidden."""
+    info = _CURSORINFO()
+    info.cbSize = ctypes.sizeof(info)
+    if not ctypes.windll.user32.GetCursorInfo(ctypes.byref(info)) or not info.flags & 1:
+        return None
+    return info.ptScreenPos.x, info.ptScreenPos.y
+
+
+# The standard arrow pointer, tip at (0, 0), in pixels of the mirror image.
+# Screen captures don't include the pointer, so the mirror draws this one.
+POINTER = np.array([[0, 0], [0, 17], [4, 13], [7, 20], [10, 19], [7, 12], [12, 12]],
+                   np.float32) * 1.4
+
+
+def draw_pointer(img, x, y):
+    pts = np.round(POINTER + (x, y)).astype(np.int32)
+    cv2.fillPoly(img, [pts], (255, 255, 255), cv2.LINE_AA)
+    cv2.polylines(img, [pts], True, (0, 0, 0), 1, cv2.LINE_AA)
+
+
 class Mirror(threading.Thread):
     """Screen capture of the projector's display, while anyone is watching
     and the projector's monitor is there."""
@@ -474,7 +507,13 @@ class Mirror(threading.Thread):
                 except Exception:            # display removed mid-grab
                     time.sleep(1.0)
                     continue
-                small = cv2.resize(shot, (self.width, height), interpolation=cv2.INTER_AREA)
+                small = np.ascontiguousarray(
+                    cv2.resize(shot, (self.width, height), interpolation=cv2.INTER_AREA))
+                pointer = cursor_position()
+                if pointer and (m.x <= pointer[0] < m.x + m.width
+                                and m.y <= pointer[1] < m.y + m.height):
+                    k = self.width / m.width
+                    draw_pointer(small, (pointer[0] - m.x) * k, (pointer[1] - m.y) * k)
                 self.stream.put(encode(small))
                 time.sleep(max(0.0, self.period - (time.perf_counter() - t0)))
 
@@ -483,7 +522,7 @@ class Mirror(threading.Thread):
 # HTTP
 # --------------------------------------------------------------------------- #
 
-def make_handler(stage, camera, projector, mirror):
+def make_handler(stage, camera, projector, mirror, shutdown):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
             pass
@@ -633,6 +672,9 @@ def make_handler(stage, camera, projector, mirror):
                     if projector.source is not None and projector.state == "image":
                         return self._projector_reply(projector.do("show"))
                     self._json(projector.status())
+                elif url.path == "/shutdown":
+                    self._json({"ok": True})
+                    shutdown()
                 elif url.path in ("/projector/blank", "/projector/close"):
                     self._projector_reply(projector.do(url.path.rsplit("/", 1)[1]))
                 else:
@@ -660,8 +702,15 @@ def main():
     for t in (stage, camera, projector, mirror):
         t.start()
 
+    def shutdown():
+        # serve_forever() returns once shutdown() is called from another
+        # thread; then the cleanup below runs, as for Ctrl+C.
+        print("shutdown requested (UI window closed)", flush=True)
+        threading.Thread(target=server.shutdown, daemon=True).start()
+
     server = ThreadingHTTPServer(("127.0.0.1", args.port),
-                                 make_handler(stage, camera, projector, mirror))
+                                 make_handler(stage, camera, projector, mirror,
+                                              shutdown))
     server.daemon_threads = True
     print(f"UI on http://localhost:{args.port}   Ctrl+C to stop", flush=True)
     if projector.monitor is None:

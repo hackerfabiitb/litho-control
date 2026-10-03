@@ -8,11 +8,21 @@ process, `server.py`.
 .\ui\start.ps1
 ```
 
-That runs the server **in the current terminal**, and opens
-`http://localhost:8765` in Chrome (or Edge if Chrome is missing) as soon as
-it answers. Errors and status stay visible there. **Ctrl+C** stops it and
-releases the camera and COM4. Arguments go to `server.py`, e.g.
-`.\ui\start.ps1 --monitor DISPLAY5`.
+That runs the server **in the current terminal**, and opens the UI in its
+own app window (Chrome, or Edge if Chrome is missing) as soon as the server
+answers. Errors and status stay visible in the terminal. The window and the
+server live and die together:
+- **Ctrl+C** in the terminal, or the server exiting for any reason, closes
+  the window;
+- **closing the window** stops the server cleanly (`POST /shutdown`), which
+  releases the camera and COM4.
+
+Arguments go to `server.py`, e.g. `.\ui\start.ps1 --monitor DISPLAY5`.
+
+The window uses its own browser profile
+(`%LOCALAPPDATA%\litho-control\ui-browser`), so it runs as a separate browser
+process, apart from your normal browser windows. A UI window left over from
+an earlier run is closed at startup.
 
 The server starts even if some hardware is missing. It prints each problem
 once and keeps retrying every 3 s:
@@ -34,7 +44,7 @@ Then:
 | area | shows |
 | --- | --- |
 | **left column** | position, soft limits, step size, speed, motors between moves, a state snapshot export, and the **serial log** with a raw-command box at the bottom |
-| **PROJECTOR** pane | a screen capture of the projector's display, 1280 px wide, about 5 fps. It shows what the projector is really showing, including the desktop or anything that pops up over the pattern |
+| **PROJECTOR** pane | a screen capture of the projector's display, 1280 px wide, about 5 fps. It shows what the projector is really showing, including the desktop or anything that pops up over the pattern. The **mouse pointer** is drawn in when it's on the projector's screen (screen captures leave it out) |
 | **CAMERA** pane | the deflickered camera feed at full resolution, 1936×1216. The header shows fps in → shown, the frame mean against the keep cutoff, and how many frames were forced |
 | controls under the panes | exposure (µs), keep ≥ (fraction of the recent top), max hold (s); **Apply** changes them live |
 | under the panes | **Jog** with **Z focus** (set / go / autofocus sweep) beside it, then go to absolute / relative, and **go to zero** per axis. Zero is the homed end (see [xyz_stage](../xyz_stage/README.md#homing)) |
@@ -90,6 +100,7 @@ doesn't change what the projector shows.
 | `POST /projector/image?fit=native&name=x.png` | body = image file |
 | `POST /projector/fit` | `{"fit": "native" / "contain" / "cover" / "stretch"}` |
 | `POST /projector/blank`, `POST /projector/close` | |
+| `POST /shutdown` | stop the server cleanly, as Ctrl+C does. `start.ps1` sends it when the UI window is closed |
 
 Projector calls return once the change is on screen.
 
@@ -129,6 +140,33 @@ Projector calls return once the change is on screen.
 - **Only one server at a time**, because it uses port 8765.
 
 ## Log
+
+### 2026-10-03 — UI window and server close together; mouse pointer in the PROJECTOR pane
+
+- **Lifetime.** `start.ps1` opens the UI with `--app` and a dedicated
+  `--user-data-dir`, so the window is its own browser process. A background
+  job watches that process and sends `POST /shutdown` when it exits. The
+  script's `finally` closes the window whenever the server exits (Ctrl+C,
+  `/shutdown`, a crash): it closes the main window first, then force-closes
+  after 3 s.
+  - **Bug found in testing:** the job originally waited with
+    `$p.WaitForExit()`. PowerShell can't stop a job blocked in a .NET call,
+    so `Remove-Job` hung and the window stayed open. It now polls with
+    `Start-Sleep`, and the window is closed before the job is removed.
+  - **Tested** in Windows PowerShell 5.1 and PowerShell 7, with a headless
+    browser standing in for the window:
+    - killing the browser stops the server ("shutdown requested");
+    - `/shutdown` closes the browser and ends the script;
+    - a real Ctrl+C, sent with `GenerateConsoleCtrlEvent` to a console
+      started through WMI, stops everything in about 5 s.
+
+    Shells launched from Claude's tool shell ignore Ctrl+C, so the first Ctrl+C
+    test proved nothing.
+- **Pointer.** `/projector/stream` draws an arrow at the mouse position
+  (`GetCursorInfo`, physical pixels, matching the per-monitor-DPI-aware
+  monitor rectangles) when it's inside the projector's rectangle. Checked by
+  mirroring `DISPLAY1` (`--monitor DISPLAY1`): the arrow appeared at the
+  mouse's position.
 
 ### 2026-10-03 — start.ps1 runs in the current terminal; server starts without the projector
 
