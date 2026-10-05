@@ -62,7 +62,8 @@ sys.path.insert(0, os.path.join(ROOT, "projector"))
 sys.path.insert(0, os.path.join(ROOT, "xyz_stage"))
 
 from deflicker import KeepFilter  # noqa: E402
-from display import PatternWindow, find_projector  # noqa: E402  (sets DPI awareness)
+from display import (PatternWindow, detached_displays, extend_desktop,  # noqa: E402
+                     find_projector)  # (importing display sets DPI awareness)
 from find_arduino import BAUD, find_arduino  # noqa: E402
 from pylon_utils import _try_set, frame_score, grab_frames, open_camera  # noqa: E402
 
@@ -372,16 +373,22 @@ class Projector(threading.Thread):
     The projector's monitor may be missing at startup (Windows set to "PC
     screen only", or the projector off). The stage and camera don't need it,
     so the server starts anyway and looks for the monitor again every
-    RETRY_S seconds, and before each command."""
+    RETRY_S seconds, and before each command. If a monitor is plugged in but
+    left out of the desktop, it runs Win+P -> Extend (DisplaySwitch /extend),
+    at most every EXTEND_S seconds. A switched-off projector lists no monitor,
+    so then nothing is switched."""
 
     RETRY_S = 3.0
+    EXTEND_S = 30.0
 
-    def __init__(self, monitor_name=None):
+    def __init__(self, monitor_name=None, auto_extend=True):
         super().__init__(daemon=True)
         self.monitor_name = monitor_name     # --monitor, else the one non-primary
+        self.auto_extend = auto_extend
         self.monitor = None
         self.error = None
         self._found_at = 0.0
+        self._extended_at = -1e9
         self.commands = queue.Queue()
         self.source = None
         self.image_name = None
@@ -396,6 +403,13 @@ class Projector(threading.Thread):
             self.monitor, self.error = find_projector(self.monitor_name), None
         except RuntimeError as exc:
             self.monitor, self.error = None, str(exc)
+            detached = self.auto_extend and detached_displays()
+            if detached and time.monotonic() - self._extended_at > self.EXTEND_S:
+                self._extended_at = time.monotonic()
+                print(f"projector plugged in but not in the desktop "
+                      f"({', '.join(detached)}): extending it (Win+P -> Extend)",
+                      flush=True)
+                extend_desktop()             # found on the next retry
         self._found_at = time.monotonic()
         if self.monitor and not had:
             m = self.monitor
@@ -693,11 +707,13 @@ def main():
     p.add_argument("--keep-frac", type=float, default=0.8)
     p.add_argument("--max-hold", type=float, default=0.5, help="s")
     p.add_argument("--monitor", default=None, help="projector, e.g. DISPLAY5")
+    p.add_argument("--no-extend", action="store_true",
+                   help="don't extend the desktop to a projector left out of it")
     args = p.parse_args()
 
     stage = Stage()
     camera = Camera(args.exposure, args.keep_frac, args.max_hold)
-    projector = Projector(args.monitor)
+    projector = Projector(args.monitor, auto_extend=not args.no_extend)
     mirror = Mirror(projector)
     for t in (stage, camera, projector, mirror):
         t.start()
@@ -715,9 +731,9 @@ def main():
     print(f"UI on http://localhost:{args.port}   Ctrl+C to stop", flush=True)
     if projector.monitor is None:
         print(f"projector display not found ({projector.error}).\n"
-              f"  Stage and camera work without it. If the projector is on, press"
-              f" Win+P -> Extend; the server checks again every"
-              f" {projector.RETRY_S:.0f} s.", flush=True)
+              f"  Stage and camera work without it. Is the projector on? The"
+              f" server checks again every {projector.RETRY_S:.0f} s and extends"
+              f" the desktop to it once it is plugged in.", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

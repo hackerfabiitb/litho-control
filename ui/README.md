@@ -8,9 +8,8 @@ process, `server.py`.
 .\ui\start.ps1
 ```
 
-That runs the server **in the current terminal**, and opens the UI in its
-own app window (Chrome, or Edge if Chrome is missing) as soon as the server
-answers. Errors and status stay visible in the terminal. The window and the
+That runs the server **in the current terminal**, and opens the UI in a
+**Firefox** window of its own as soon as the server answers. Errors and status stay visible in the terminal. The window and the
 server live and die together:
 - **Ctrl+C** in the terminal, or the server exiting for any reason, closes
   the window;
@@ -19,10 +18,15 @@ server live and die together:
 
 Arguments go to `server.py`, e.g. `.\ui\start.ps1 --monitor DISPLAY5`.
 
-The window uses its own browser profile
-(`%LOCALAPPDATA%\litho-control\ui-browser`), so it runs as a separate browser
-process, apart from your normal browser windows. A UI window left over from
-an earlier run is closed at startup.
+The window uses its own Firefox profile
+(`%LOCALAPPDATA%\litho-control\ui-firefox`, started with `-no-remote`), so it
+is a separate Firefox instance, apart from your normal Firefox windows.
+`start.ps1` writes a `user.js` there that turns off first-run pages, the
+default-browser prompt, quit warnings and crash restore. The script
+recognises the window by that profile path in the process command line, not
+by the process ID it launched. A UI window left over from an earlier run is
+closed at startup. On first use, Firefox shows a Terms of Use bar once, and
+it remembers the window size after you maximise it.
 
 The server starts even if some hardware is missing. It prints each problem
 once and keeps retrying every 3 s:
@@ -31,7 +35,7 @@ once and keeps retrying every 3 s:
 | --- | --- | --- |
 | Uno | `[stage] expected one Arduino, found: none` | plug in the Uno's USB |
 | camera | `[camera] No Basler camera found…` | plug in the camera's USB3; close pylon Viewer and `camera\run.ps1` |
-| projector display | `projector display not found (… found: \\.\DISPLAY1 …)` | turn the projector on, then **Win+P → Extend**. Windows can see the projector and still leave it out of the desktop ("PC screen only"). Meanwhile projector commands answer 409 with this reason |
+| projector display | `projector display not found (… found: \\.\DISPLAY1 …)` | turn the projector on. If it's plugged in but left out of the desktop ("PC screen only"), the server extends the desktop to it by itself (`DisplaySwitch.exe /extend`, i.e. Win+P → Extend; at most every 30 s; `--no-extend` turns this off). Meanwhile projector commands answer 409 with this reason |
 
 Then:
 - **Stage:** nothing to do. The server finds the Uno by its USB ID (with
@@ -140,6 +144,36 @@ Projector calls return once the change is on screen.
 - **Only one server at a time**, because it uses port 8765.
 
 ## Log
+
+### 2026-10-05 — UI closed right after opening (Edge launcher); Firefox; automatic Win+P → Extend
+
+- **Symptom:** the UI window closed right after it opened.
+- **Cause:** with a visible window, Edge's `msedge.exe` started the real
+  browser as a child process and exited at once. The job was waiting on the
+  PID it launched, took that exit as "window closed", and sent `/shutdown`.
+  The server stopped, and the window was closed with it. The earlier tests
+  used `--headless`, which doesn't hand over, so they missed this.
+  Reproduced: launched PID exited after 0.5 s while 8 processes with the
+  profile kept running.
+- **Fixes:**
+  - **Firefox** instead of Edge (`-no-remote -profile …\ui-firefox`).
+  - The window is tracked by its profile path in the command line, so a
+    launcher hand-off can't fool it.
+  - **Tested with a real, visible window** in PowerShell 5.1 and 7:
+    - it stays open (checked at 4, 8 and 12 s);
+    - closing it (`CloseMainWindow`, as the X button does) stops the server
+      in 1.3–1.6 s;
+    - a real Ctrl+C closes it in 1.2–1.3 s.
+
+    A screenshot showed the UI in one tab, with no welcome page.
+- **Win+P → Extend** is automatic. `display.detached_displays()` lists
+  outputs that have a monitor but aren't in the desktop, and
+  `display.extend_desktop()` runs `DisplaySwitch.exe /extend`. The server
+  does this when it can't find the projector and something is detached, at
+  most every 30 s (`--no-extend` turns it off). With the projector switched
+  off, its outputs list no monitor, so nothing gets switched and the screens
+  don't flicker. Seen today: the projector was off (not on USB, no monitor),
+  so `/extend` had nothing to extend to.
 
 ### 2026-10-03 — UI window and server close together; mouse pointer in the PROJECTOR pane
 

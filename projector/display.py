@@ -76,6 +76,40 @@ def find_projector(name=None):
     return others[0]
 
 
+class _DISPLAY_DEVICEW(ctypes.Structure):
+    _fields_ = [("cb", wintypes.DWORD), ("DeviceName", wintypes.WCHAR * 32),
+                ("DeviceString", wintypes.WCHAR * 128), ("StateFlags", wintypes.DWORD),
+                ("DeviceID", wintypes.WCHAR * 128), ("DeviceKey", wintypes.WCHAR * 128)]
+
+
+def detached_displays():
+    """Display outputs that have a monitor plugged in but are not part of the
+    desktop, e.g. the projector after Win+P -> "PC screen only". Returns their
+    names (\\\\.\\DISPLAY5 ...). With the projector switched off its outputs
+    list no monitor at all, so this is empty."""
+    user32 = ctypes.windll.user32
+    found = []
+    i = 0
+    while True:
+        adapter = _DISPLAY_DEVICEW()
+        adapter.cb = ctypes.sizeof(adapter)
+        if not user32.EnumDisplayDevicesW(None, i, ctypes.byref(adapter), 0):
+            return found
+        i += 1
+        if adapter.StateFlags & 1:            # DISPLAY_DEVICE_ATTACHED_TO_DESKTOP
+            continue
+        monitor = _DISPLAY_DEVICEW()
+        monitor.cb = ctypes.sizeof(monitor)
+        if user32.EnumDisplayDevicesW(adapter.DeviceName, 0, ctypes.byref(monitor), 0):
+            found.append(adapter.DeviceName)
+
+
+def extend_desktop():
+    """What Win+P -> Extend does. Windows takes a few seconds to apply it."""
+    import subprocess
+    subprocess.run(["DisplaySwitch.exe", "/extend"], check=False)
+
+
 class _DEVMODEW(ctypes.Structure):
     _fields_ = [("dmDeviceName", wintypes.WCHAR * 32), ("dmSpecVersion", wintypes.WORD),
                 ("dmDriverVersion", wintypes.WORD), ("dmSize", wintypes.WORD),

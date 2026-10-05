@@ -1514,8 +1514,8 @@ function _setProjStatus(s) {
   document.getElementById('projPaneInfo').textContent = label;
   document.getElementById('projMonitorInfo').textContent = s.monitor
     ? `${s.monitor.replace(/^\\\\\.\\/, '')} · ${s.width}×${s.height}`
-    : `Not found (${s.error}). If the projector is on, press Win+P → Extend; ` +
-      'the server checks again every 3 s.';
+    : `Not found (${s.error}). Is the projector on? The server checks every 3 s ` +
+      'and extends the desktop to it (Win+P → Extend) once it is plugged in.';
   document.getElementById('projBtn').textContent = s.state === 'image' ? 'Send Image Again →' : 'Project Image →';
   document.getElementById('projStopBtn').style.display = active ? '' : 'none';
 }

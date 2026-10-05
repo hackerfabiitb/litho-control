@@ -10,7 +10,7 @@ a camera watches it, and an XYZ stage moves the sample.
 | [`xyz_stage/`](xyz_stage/README.md) | Arduino Uno + CNC Shield V3, 3 × DRV8825, 3 steppers (COM4) | `xyz1` firmware (drivers powered only while moving) |
 | [`ui/`](ui/README.md) | all three | the control page: stage control (through the server), projector display at native resolution, and side-by-side PROJECTOR mirror and deflickered CAMERA panes, served by `ui/server.py` |
 
-**To run everything:** `.\ui\start.ps1`, then open `http://localhost:8765`.
+**To run everything:** `.\ui\start.ps1`. It opens the UI in its own Firefox window; Ctrl+C or closing the window stops everything.
 
 ## Setup
 
