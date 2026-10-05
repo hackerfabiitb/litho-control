@@ -50,7 +50,7 @@ Then:
 | **left column** | position, soft limits, step size, speed, motors between moves, a state snapshot export, and the **serial log** with a raw-command box at the bottom |
 | **PROJECTOR** pane | a screen capture of the projector's display, 1280 px wide, about 5 fps. It shows what the projector is really showing, including the desktop or anything that pops up over the pattern. The **mouse pointer** is drawn in when it's on the projector's screen (screen captures leave it out) |
 | **CAMERA** pane | the deflickered camera feed at full resolution, 1936×1216. The header shows fps in → shown, the frame mean against the keep cutoff, and how many frames were forced |
-| controls under the panes | exposure (µs), keep ≥ (fraction of the recent top), max hold (s); **Apply** changes them live |
+| controls under the panes | exposure (µs), keep ≥ (fraction of the top), max hold (s): each is sent when you press Enter or click away. **Deflicker: on/off** (off = every camera frame, flicker included). **Calibrate deflicker**: see below. **White**: projects `patterns/white_4K.jpg` |
 | under the panes | **Jog** with **Z focus** (set / go / autofocus sweep) beside it, then go to absolute / relative, and **go to zero** per axis. Zero is the homed end (see [xyz_stage](../xyz_stage/README.md#homing)) |
 
 Text is white at 1.5× litho-ui's sizes, laid out for a 1920×1080 screen.
@@ -87,6 +87,34 @@ In the **Projector** dialog:
 The window only opens with the first Project or Blank. Starting the server
 doesn't change what the projector shows.
 
+## Deflicker calibration
+
+The deflicker keeps a frame when its mean brightness is at least keep ×
+the "top" (`camera/deflicker.py`). Uncalibrated, the top is the 95th
+percentile of the last ~2 s of frames, so it follows the projected image: on
+an all-white image the cutoff climbs with it.
+
+**Calibrate deflicker** runs that same computation once and freezes it:
+1. projects `patterns/calibrate_deflicker.png` (the Windows wallpaper: dark
+   background, bright shapes);
+2. takes the 95th percentile of 5 s of frame means;
+3. puts back whatever the projector was showing.
+
+From then on the cutoff is keep × that top, whatever is projected.
+- **Saved** in `camera/deflicker_calibration.json` (git-ignored) and loaded at
+  startup.
+- **Exposure changes** scale the top in proportion. Recalibrate after
+  changing the light (LED current, optics).
+- **Back to the rolling rule:** delete the json and restart the server.
+
+Measured 2026-10-05, 400 µs: the top was 15.2 from 205 frames, so the cutoff
+was 12.2.
+- **On white**, the cutoff stayed at 12.2 and the kept frames were saturated
+  (mean 250).
+- **The cost:** about 5 % of the raw frames on white are part-lit (seen: 14,
+  31 and 94), above that cutoff, so they get through as an occasional dimmer
+  frame. The rolling rule rejected them.
+
 ## HTTP API
 
 | endpoint | |
@@ -98,12 +126,14 @@ doesn't change what the projector shows.
 | `POST /stage/connect`, `POST /stage/disconnect` | take or release COM4. Connecting is the default; release it to flash firmware |
 | `GET /stream` | deflickered camera, MJPEG |
 | `GET /projector/stream` | projector screen mirror, MJPEG |
-| `GET /config`, `POST /config` | camera settings and stats; POST any of `exposure_us`, `keep_frac`, `max_hold` |
+| `GET /config`, `POST /config` | camera settings and stats (including `deflicker` and `calibration`); POST any of `exposure_us`, `keep_frac`, `max_hold`, `deflicker` (true/false) |
+| `POST /camera/calibrate` | deflicker calibration (above); takes ~6 s, answers with the stats, or 409 if the camera or projector is missing |
 | `GET /focus_score` | Laplacian variance of the latest shown camera frame |
 | `GET /projector/status` | `state` (`closed` / `blank` / `image`), image name and size, fit |
 | `POST /projector/image?fit=native&name=x.png` | body = image file |
 | `POST /projector/fit` | `{"fit": "native" / "contain" / "cover" / "stretch"}` |
 | `POST /projector/blank`, `POST /projector/close` | |
+| `POST /projector/pattern` | `{"name": "white_4K.jpg"}`: show an image from `patterns/` at 1:1 |
 | `POST /shutdown` | stop the server cleanly, as Ctrl+C does. `start.ps1` sends it when the UI window is closed |
 
 Projector calls return once the change is on screen.
@@ -139,11 +169,30 @@ Projector calls return once the change is on screen.
   other way round.
 - **Camera defaults** match `camera\run.ps1`: full sensor, 400 µs,
   keep ≥ 0.8 × recent top, 0.5 s max hold. The same rule is used
-  (`camera/deflicker.py`). Override them with
+  (`camera/deflicker.py`), with the top frozen once calibrated. Override them with
   `server.py --exposure --keep-frac --max-hold`.
 - **Only one server at a time**, because it uses port 8765.
 
 ## Log
+
+### 2026-10-05 — deflicker calibration, deflicker on/off, White button; settings save on Enter or blur
+
+- **Calibrate deflicker** freezes the keep rule's top, measured on
+  `patterns/calibrate_deflicker.png`. `KeepFilter.fixed_top`, and
+  `relative_cutoff` run once on the collected means.
+- **Deflicker: on/off** (`KeepFilter.enabled`) and **White**
+  (`POST /projector/pattern`).
+- **Apply removed:** each camera field is sent on Enter or blur.
+- **Tested on the hardware**, through the HTTP API:
+  - calibrate took 6.2 s, used 205 frames, gave top 15.2 and cutoff 12.2,
+    and restored the projector;
+  - on white the cutoff stayed at 12.2, with 12 frames/s shown;
+  - deflicker off showed 41 of 41 frames/s;
+  - exposure 400 → 200 µs halved the cutoff (6.1), and it was restored at
+    400.
+
+  The page script passes `node --check`. The buttons weren't clicked in a
+  browser.
 
 ### 2026-10-05 — UI closed right after opening (Edge launcher); Firefox; automatic Win+P → Extend
 

@@ -40,6 +40,11 @@ can't share the camera.
 
 No `--threshold-low` or `--threshold-high`: `--keep-frac` replaces them.
 
+In the UI, **Calibrate deflicker** freezes the "recent brightest" instead,
+measured once on a reference image, so bright images like all-white don't
+raise the cutoff. See [ui/README.md](../ui/README.md#deflicker-calibration).
+This standalone viewer always uses the rolling rule.
+
 Measured live on the desktop image, 20 s each:
 
 | exposure | display updates | longest time a frame stayed up | clipped pixels |

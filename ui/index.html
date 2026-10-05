@@ -809,20 +809,28 @@
       <div class="cam-controls">
         <div class="cam-ctrl-group">
           <span class="cam-ctrl-label">EXPOSURE</span>
-          <input class="tinput" type="number" id="camExposure" value="400" min="34" max="1000000" style="width:120px;" />
+          <input class="tinput" type="number" id="camExposure" value="400" min="34" max="1000000" style="width:120px;"
+                 onchange="setCamConfig('exposure_us', this)" onkeydown="if(event.key==='Enter')this.blur()" />
           <span class="cam-ctrl-unit">µs</span>
         </div>
         <div class="cam-ctrl-group">
           <span class="cam-ctrl-label">KEEP ≥</span>
-          <input class="tinput" type="number" id="camKeepFrac" value="0.8" min="0" max="1" step="0.02" style="width:90px;" />
-          <span class="cam-ctrl-unit">× recent top</span>
+          <input class="tinput" type="number" id="camKeepFrac" value="0.8" min="0" max="1" step="0.02" style="width:90px;"
+                 onchange="setCamConfig('keep_frac', this)" onkeydown="if(event.key==='Enter')this.blur()" />
+          <span class="cam-ctrl-unit" id="camTopLabel">× top</span>
         </div>
         <div class="cam-ctrl-group">
           <span class="cam-ctrl-label">MAX HOLD</span>
-          <input class="tinput" type="number" id="camMaxHold" value="0.5" min="0" max="10" step="0.1" style="width:90px;" />
+          <input class="tinput" type="number" id="camMaxHold" value="0.5" min="0" max="10" step="0.1" style="width:90px;"
+                 onchange="setCamConfig('max_hold', this)" onkeydown="if(event.key==='Enter')this.blur()" />
           <span class="cam-ctrl-unit">s</span>
         </div>
-        <button class="cam-apply-btn" onclick="applyCamConfig()">Apply</button>
+        <button class="cam-apply-btn" id="deflickerBtn" onclick="toggleDeflicker()"
+                title="Off: show every camera frame, flicker included">Deflicker: on</button>
+        <button class="cam-apply-btn" id="calDeflickerBtn" onclick="calibrateDeflicker()"
+                title="Projects patterns/calibrate_deflicker.png for 5 s, sets the cutoff from it and keeps it fixed">Calibrate deflicker</button>
+        <button class="cam-apply-btn" onclick="showPattern('white_4K.jpg')"
+                title="Project patterns/white_4K.jpg (all white)">White</button>
         <span class="cam-err-text" id="camErrText"></span>
       </div>
     </div>
@@ -1679,8 +1687,9 @@ function onCamImgError() {
 
 function _camStatsText(c) {
   if (!c.connected) return c.error || 'camera not open';
+  if (c.deflicker === false) return `${c.in_fps} fps · raw (deflicker off) · mean ${c.mean}`;
   return `${c.in_fps} fps in → ${c.shown_fps} shown · mean ${c.mean} / cutoff ${c.cutoff}` +
-         ` · forced ${c.forced}`;
+         (c.calibration ? ' fixed' : ' live') + ` · forced ${c.forced}`;
 }
 
 function _camConnect(serverConfig) {
@@ -1712,6 +1721,16 @@ function _camShowConfig(c) {
   if (c.error) { setCamStatus('err', 'camera error'); showCamErr(c.error); }
   else         { setCamStatus('on', c.connected ? 'live' : 'opening camera…'); showCamErr(''); }
   document.getElementById('camPaneInfo').textContent = _camStatsText(c);
+  deflickerOn = c.deflicker !== false;
+  const btn = document.getElementById('deflickerBtn');
+  btn.textContent = 'Deflicker: ' + (deflickerOn ? 'on' : 'off');
+  btn.style.borderColor = deflickerOn ? 'var(--accent)' : 'var(--warn)';
+  btn.style.color = deflickerOn ? 'var(--accent)' : 'var(--warn)';
+  const k = c.calibration;
+  const top = document.getElementById('camTopLabel');
+  top.textContent = k ? '× calibrated top' : '× recent top';
+  top.title = k ? `calibrated ${k.date} on ${k.image}: top ${k.top} at ${k.exposure_us} µs`
+                : 'not calibrated: the top follows the projected image';
 }
 
 function _camDisconnect(reason) {
@@ -1761,23 +1780,65 @@ function toggleCamera() {
   }
 }
 
-async function applyCamConfig() {
-  const exposure_us = parseFloat(document.getElementById('camExposure').value);
-  const keep_frac   = parseFloat(document.getElementById('camKeepFrac').value);
-  const max_hold    = parseFloat(document.getElementById('camMaxHold').value);
-  if (![exposure_us, keep_frac, max_hold].every(isFinite)) { showCamErr('Invalid value'); return; }
+// Camera settings are sent as soon as a field is committed (Enter, or
+// clicking away), one setting at a time.
+async function _postCamConfig(body) {
   try {
     const r = await fetch(CAM_URL + '/config', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ exposure_us, keep_frac, max_hold }),
+      body:    JSON.stringify(body),
       signal:  AbortSignal.timeout(2000),
     });
     if (r.ok) { showCamErr(''); _camShowConfig(await r.json()); }
-    else      showCamErr('Apply failed');
+    else      showCamErr('Camera setting failed');
   } catch (_) {
     showCamErr('Server unreachable');
   }
+}
+
+function setCamConfig(key, input) {
+  const v = parseFloat(input.value);
+  if (!isFinite(v)) { showCamErr('Invalid value'); return; }
+  _postCamConfig({ [key]: v });
+  log(`Camera: ${key} = ${v}`, 'sys');
+}
+
+let deflickerOn = true;
+function toggleDeflicker() {
+  _postCamConfig({ deflicker: !deflickerOn });
+  log('Camera: deflicker ' + (deflickerOn ? 'off (raw feed)' : 'on'), 'sys');
+}
+
+async function calibrateDeflicker() {
+  const btn = document.getElementById('calDeflickerBtn');
+  btn.disabled = true;
+  btn.textContent = 'Calibrating… 5 s';
+  log('Deflicker: projecting calibrate_deflicker.png for 5 s…', 'sys');
+  try {
+    const r = await fetch(CAM_URL + '/camera/calibrate',
+                          { method: 'POST', signal: AbortSignal.timeout(20000) });
+    const c = await r.json();
+    if (!r.ok) throw new Error(c.error || ('HTTP ' + r.status));
+    _camShowConfig(c);
+    const k = c.calibration;
+    log(`Deflicker calibrated: top ${k.top} from ${k.frames} frames at ${k.exposure_us} µs ` +
+        `→ cutoff ${c.cutoff} (fixed)`, 'sys');
+  } catch (e) {
+    log('Deflicker calibration failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Calibrate deflicker';
+    _refreshProjStatus();
+  }
+}
+
+async function showPattern(name) {
+  try {
+    const s = await _projPost('/projector/pattern', JSON.stringify({ name }),
+                              { 'Content-Type': 'application/json' });
+    log(`Projector: showing ${s.image}`, 'sys');
+  } catch (e) { log('Projector: ' + e.message, 'err'); }
 }
 
 // ── Init ───────────────────────────────────────────────────

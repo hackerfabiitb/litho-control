@@ -19,7 +19,11 @@ POST /stage/connect          (re)connect automatically — the default
 POST /stage/disconnect       release the COM port, e.g. to flash firmware
 GET  /stream                 deflickered camera feed, MJPEG (full resolution)
 GET  /config                 camera settings and live stats, JSON
-POST /config                 {"exposure_us", "keep_frac", "max_hold"} (any subset)
+POST /config                 {"exposure_us", "keep_frac", "max_hold", "deflicker"}
+                             (any subset; deflicker false = raw feed)
+POST /camera/calibrate       project patterns/calibrate_deflicker.png for 5 s,
+                             run the keep rule's cutoff on those frames once and
+                             freeze it (saved in camera/deflicker_calibration.json)
 GET  /focus_score            Laplacian variance of the latest shown camera frame
 GET  /projector/stream       what the projector displays, captured from its
                              screen, MJPEG — so it also shows anything else
@@ -31,6 +35,7 @@ POST /projector/image?fit=native|contain|cover|stretch&name=...
                              projector at its native resolution
 POST /projector/fit          {"fit": ...} re-fit the current image
 POST /projector/blank        show black (window stays up)
+POST /projector/pattern      {"name": "white_4K.jpg"}: show an image from patterns/
 POST /projector/close        close the window; the projector shows the desktop
 POST /shutdown               stop the server cleanly (ui\\start.ps1 sends it
                              when the UI window is closed)
@@ -61,7 +66,7 @@ sys.path.insert(0, os.path.join(ROOT, "camera"))
 sys.path.insert(0, os.path.join(ROOT, "projector"))
 sys.path.insert(0, os.path.join(ROOT, "xyz_stage"))
 
-from deflicker import KeepFilter  # noqa: E402
+from deflicker import KeepFilter, relative_cutoff  # noqa: E402
 from display import (PatternWindow, detached_displays, extend_desktop,  # noqa: E402
                      find_projector)  # (importing display sets DPI awareness)
 from find_arduino import BAUD, find_arduino  # noqa: E402
@@ -69,6 +74,19 @@ from pylon_utils import _try_set, frame_score, grab_frames, open_camera  # noqa:
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FITS = ("native", "contain", "cover", "stretch")
+PATTERNS = os.path.join(ROOT, "patterns")
+CAL_IMAGE = "calibrate_deflicker.png"
+CAL_SECONDS = 5.0
+CAL_FILE = os.path.join(ROOT, "camera", "deflicker_calibration.json")
+
+
+def load_pattern(name):
+    """An image from patterns/ (by file name only)."""
+    path = os.path.join(PATTERNS, os.path.basename(name))
+    img = cv2.imread(path, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError(f"no image patterns/{os.path.basename(name)}")
+    return img
 
 
 class Latest:
@@ -260,9 +278,70 @@ class Camera(threading.Thread):
         self.error = None
         self.last_frame = None
         self.mean = 0.0
+        self.calibration = None              # see calibrate(); loaded below
+        self.collect = None                  # frame means go here while calibrating
         # appended by the grab thread, only read elsewhere
         self.in_times, self.shown_times = deque(maxlen=400), deque(maxlen=400)
         self.stop_flag = threading.Event()
+        self._load_calibration()
+
+    # The deflicker's cutoff is keep_frac x "the top of the recent frame
+    # means" (camera/deflicker.py). Live, that top follows the projected
+    # image, so an all-white image pushes it up. Calibration runs the same
+    # computation once, on CAL_SECONDS of a reference image, and freezes the
+    # top. It is a camera brightness, so it scales with the exposure.
+
+    def _load_calibration(self):
+        try:
+            with open(CAL_FILE, encoding="utf-8") as fh:
+                self.calibration = json.load(fh)
+        except (OSError, ValueError):
+            return
+        self._apply_calibration()
+
+    def _apply_calibration(self):
+        c = self.calibration
+        self.filter.fixed_top = c["top"] * self.exposure_us / c["exposure_us"]
+
+    def calibrate(self, projector):
+        """Show the reference image, collect frame means for CAL_SECONDS,
+        freeze the top, then put back what the projector was showing."""
+        if not self.connected:
+            raise RuntimeError(f"camera not connected ({self.error})")
+        image = load_pattern(CAL_IMAGE)
+        before = (projector.source, projector.image_name, projector.fit, projector.state)
+        projector.source, projector.image_name, projector.fit = image, CAL_IMAGE, "native"
+        try:
+            if projector.do("show")["state"] != "image":
+                raise RuntimeError(f"projector display not found ({projector.error})")
+            time.sleep(0.5)                  # let the new image reach the camera
+            self.collect = []
+            time.sleep(CAL_SECONDS)
+            means, self.collect = self.collect, None
+        finally:
+            self.collect = None
+            source, name, fit, state = before
+            projector.source, projector.image_name, projector.fit = source, name, fit
+            if state == "image" and source is not None:
+                projector.do("show")
+            elif state == "blank":
+                projector.do("blank")
+            else:
+                projector.do("close")
+        if len(means) < 20:
+            raise RuntimeError(f"only {len(means)} frames in {CAL_SECONDS:.0f} s")
+        top = relative_cutoff(means, 1.0)    # the live rule's top, run once
+        self.calibration = {
+            "top": round(top, 2), "exposure_us": self.exposure_us,
+            "frames": len(means), "image": CAL_IMAGE,
+            "date": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        self._apply_calibration()
+        with open(CAL_FILE, "w", encoding="utf-8") as fh:
+            json.dump(self.calibration, fh, indent=2)
+        print(f"[camera] deflicker calibrated: top {top:.1f} at {self.exposure_us:g} us"
+              f" from {len(means)} frames -> cutoff {self.filter.cutoff:.1f}", flush=True)
+        return self.calibration
 
     def configure(self, **kw):
         with self.lock:
@@ -275,10 +354,14 @@ class Camera(threading.Thread):
             self.exposure_us = float(pending["exposure_us"])
             _try_set(cam, ["ExposureTime"], self.exposure_us)
             self.filter.reset()              # the brightness scale changed
+            if self.calibration:
+                self._apply_calibration()    # scale the frozen top with it
         if "keep_frac" in pending:
             self.filter.keep_frac = float(pending["keep_frac"])
         if "max_hold" in pending:
             self.filter.max_hold = float(pending["max_hold"])
+        if "deflicker" in pending:
+            self.filter.enabled = bool(pending["deflicker"])
 
     @staticmethod
     def _rate(times, now, span=2.0):
@@ -296,6 +379,7 @@ class Camera(threading.Thread):
             "shown_fps": round(self._rate(self.shown_times, now), 1),
             "kept": f.kept, "forced": f.forced, "total": f.total,
             "longest_hold_ms": round(1e3 * f.longest_hold),
+            "deflicker": f.enabled, "calibration": self.calibration,
         }
 
     def run(self):
@@ -314,6 +398,8 @@ class Camera(threading.Thread):
                     now = time.perf_counter()
                     self.in_times.append(now)
                     self.mean = frame_score(frame)[0]
+                    if self.collect is not None:
+                        self.collect.append(self.mean)
                     show, _ = self.filter.decide(self.mean, now)
                     if show:
                         self.shown_times.append(now)
@@ -663,7 +749,8 @@ def make_handler(stage, camera, projector, mirror, shutdown):
                     data = json.loads(self._body() or b"{}")
                     camera.configure(exposure_us=data.get("exposure_us"),
                                      keep_frac=data.get("keep_frac"),
-                                     max_hold=data.get("max_hold"))
+                                     max_hold=data.get("max_hold"),
+                                     deflicker=data.get("deflicker"))
                     time.sleep(0.1)          # let the grab thread pick it up
                     self._json(camera.stats())
                 elif url.path == "/projector/image":
@@ -686,6 +773,18 @@ def make_handler(stage, camera, projector, mirror, shutdown):
                     if projector.source is not None and projector.state == "image":
                         return self._projector_reply(projector.do("show"))
                     self._json(projector.status())
+                elif url.path == "/camera/calibrate":
+                    try:
+                        camera.calibrate(projector)
+                    except RuntimeError as exc:
+                        return self._json({**camera.stats(), "error": str(exc)}, 409)
+                    self._json(camera.stats())
+                elif url.path == "/projector/pattern":
+                    name = json.loads(self._body() or b"{}").get("name", "")
+                    projector.source = load_pattern(name)
+                    projector.image_name = os.path.basename(name)
+                    projector.fit = "native"
+                    self._projector_reply(projector.do("show"))
                 elif url.path == "/shutdown":
                     self._json({"ok": True})
                     shutdown()

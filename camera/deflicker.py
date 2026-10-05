@@ -5,6 +5,12 @@ Under the DLP projector, frame brightness is a continuous spread from black
 up to "saw the full light" (see camera/README.md, "Why the camera sees
 flicker"). A frame is kept when it is close to the top of the recent spread,
 and no frame is held on screen longer than max_hold, whatever the rule says.
+
+"Recent spread" makes the cutoff follow the image: on an all-white image the
+partly lit frames are bright too, and the cutoff climbs with them. So the top
+can instead be fixed by calibration (KeepFilter.fixed_top, measured on a
+reference image by the UI's "Calibrate deflicker"); the cutoff then no longer
+depends on what is projected.
 """
 
 import time
@@ -30,11 +36,18 @@ class KeepFilter:
     decide(mean) -> (show, forced): `show` is True for a kept frame and for a
     forced one; `forced` marks a frame shown only because the previous one
     had been on screen for max_hold seconds.
+
+    fixed_top: None to follow the recent frames (95th percentile), or a
+    calibrated frame mean that stands for "saw the full light"; the cutoff is
+    then keep_frac x fixed_top whatever is projected.
+    enabled: False shows every frame (the raw, flickering feed).
     """
 
     def __init__(self, keep_frac=0.8, max_hold=0.5):
         self.keep_frac = keep_frac
         self.max_hold = max_hold
+        self.fixed_top = None
+        self.enabled = True
         self.recent = deque(maxlen=RECENT_FRAMES)
         self.last_shown = None
         self.cutoff = 0.0
@@ -44,9 +57,12 @@ class KeepFilter:
     def decide(self, mean, now=None):
         now = time.perf_counter() if now is None else now
         self.recent.append(mean)
-        self.cutoff = relative_cutoff(self.recent, self.keep_frac)
+        if self.fixed_top is not None:
+            self.cutoff = self.keep_frac * self.fixed_top
+        else:
+            self.cutoff = relative_cutoff(self.recent, self.keep_frac)
         self.total += 1
-        keep = mean >= self.cutoff
+        keep = mean >= self.cutoff or not self.enabled
         forced = (not keep and self.max_hold > 0 and self.last_shown is not None
                   and now - self.last_shown > self.max_hold)
         if keep or forced or self.last_shown is None:   # always show a first frame
