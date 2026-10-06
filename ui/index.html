@@ -262,41 +262,66 @@
   }
   .pos-row {
     display: grid;
-    /* axis | min limit | - | value | + | max limit */
-    grid-template-columns: 22px 1fr 44px 7.5ch 44px 1fr;
+    /* axis | limit min | position field | limit max */
+    grid-template-columns: 22px 1fr 190px 1fr;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
   }
+  .pos-head { font-size: 12px; color: var(--dim); text-transform: uppercase; white-space: nowrap; }
+  .pos-head.min, .pos-lim.min { text-align: right; }
+  .pos-head.max, .pos-lim.max { text-align: left; }
   .pos-axis {
     font-size: 17px;
     font-weight: 600;
     color: var(--muted);
   }
   .pos-lim { font-size: 15px; color: var(--dim); white-space: nowrap; }
-  .pos-lim.min { text-align: right; }
-  .pos-lim.max { text-align: left; }
-  .pos-val {
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--text);
-    text-align: center;
+  .pos-keys { font-size: 13px; color: var(--dim); margin-top: 2px; }
+
+  /* ── Number field: grey rounded box, value centred, small < > at the ends ──
+     Arrows step by data-step (position fields: one jog step); typing commits
+     on Enter or when focus leaves; Up/Down while editing nudge the value. */
+  .numfield {
+    display: inline-flex;
+    align-items: stretch;
+    height: 34px;
+    border-radius: 7px;
+    overflow: hidden;
+    background: #5b5b5b;
+    border: 1px solid #2e2e2e;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.07);
+    vertical-align: middle;
+    flex-shrink: 0;
   }
-  .pos-jog {
-    height: 38px;
+  .numfield:hover { background: #656565; }
+  .numfield input {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: #f4f4f4;
     font-family: var(--mono);
-    font-size: 20px;
-    border: 1px solid var(--border2);
-    border-radius: 3px;
-    background: var(--bg2);
-    color: var(--text);
+    font-size: 18px;
+    text-align: center;
+    padding: 0 2px;
+  }
+  .numfield input:focus { background: #3c3c3c; }
+  .numfield .nf-btn {
+    flex: 0 0 22px;
+    border: none;
+    padding: 0;
+    background: #4e4e4e;
+    color: #c8c8c8;
+    font-family: var(--mono);
+    font-size: 16px;
+    line-height: 1;
     cursor: pointer;
     user-select: none;
-    transition: all 0.08s;
   }
-  .pos-jog:hover { border-color: var(--accent); color: var(--accent); }
-  .pos-jog:active, .pos-jog.flash { border-color: var(--accent); color: var(--accent);
-                                    background: rgba(0,229,160,0.12); }
-  .pos-keys { font-size: 13px; color: var(--dim); margin-top: 2px; }
+  .numfield .nf-btn:hover { background: #6a6a6a; color: #fff; }
+  .numfield .nf-btn:active, .numfield .nf-btn.flash { background: #747474; color: var(--accent); }
 
   /* ── Step size ── */
   .step-panel {
@@ -344,12 +369,6 @@
   }
   .speed-row { display: flex; align-items: center; gap: 10px; }
   .speed-row label { font-size: 14px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
-  .speed-row input[type=range] {
-    flex: 1;
-    accent-color: var(--accent);
-    cursor: pointer;
-  }
-  .speed-val { font-size: 15px; color: var(--text); min-width: 50px; text-align: right; }
 
   /* ── Idle mode (Release / Hold) ── */
   .idle-panel { padding: 12px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
@@ -591,10 +610,9 @@
     <span class="topbar-clock" id="clock"></span>
     <div style="display:flex;align-items:center;gap:6px;">
       <div class="status-dot" id="dot"></div>
-      <span class="status-text" id="statusText">waiting for the server…</span>
+      <span class="status-text" id="statusText" title="The stage: the server's serial link to the Uno">stage: waiting for the server…</span>
     </div>
     <div class="topbar-sep"></div>
-    <button class="conn-btn" id="projModalBtn" onclick="openProjModal()" style="border-color:var(--blue);color:var(--blue);opacity:0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">Projector</button>
     <button class="conn-btn" id="connBtn" onclick="toggleConnect()" title="Release or take back the stage's COM port (e.g. to flash firmware)">Connect stage</button>
   </div>
 
@@ -604,30 +622,27 @@
 
     <div class="pos-panel" id="posPanel">
       <div class="pos-row">
+        <span></span><span class="pos-head min">limit min</span><span></span><span class="pos-head max">limit max</span>
+      </div>
+      <div class="pos-row">
         <span class="pos-axis">X</span>
-        <span class="pos-lim min" id="limXmin" title="soft limit, low end">—</span>
-        <button class="pos-jog" id="jogXm" onclick="jog('X',-1)" title="X − one step">◀</button>
-        <span class="pos-val" id="posX">—</span>
-        <button class="pos-jog" id="jogXp" onclick="jog('X',1)" title="X + one step">▶</button>
-        <span class="pos-lim max" id="limXmax" title="soft limit, high end">—</span>
+        <span class="pos-lim min" id="limXmin">—</span>
+        <div class="numfield" data-jog="X" style="width:190px" title="X: ‹ › move one step; type a position and press Enter to go there"><button class="nf-btn" id="jogXm" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="posX" value="—" onchange="gotoAxis('X', this)" /><button class="nf-btn" id="jogXp" tabindex="-1">›</button></div>
+        <span class="pos-lim max" id="limXmax">—</span>
       </div>
       <div class="pos-row">
         <span class="pos-axis">Y</span>
-        <span class="pos-lim min" id="limYmin" title="soft limit, low end">—</span>
-        <button class="pos-jog" id="jogYm" onclick="jog('Y',-1)" title="Y − one step">◀</button>
-        <span class="pos-val" id="posY">—</span>
-        <button class="pos-jog" id="jogYp" onclick="jog('Y',1)" title="Y + one step">▶</button>
-        <span class="pos-lim max" id="limYmax" title="soft limit, high end">—</span>
+        <span class="pos-lim min" id="limYmin">—</span>
+        <div class="numfield" data-jog="Y" style="width:190px" title="Y: ‹ › move one step; type a position and press Enter to go there"><button class="nf-btn" id="jogYm" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="posY" value="—" onchange="gotoAxis('Y', this)" /><button class="nf-btn" id="jogYp" tabindex="-1">›</button></div>
+        <span class="pos-lim max" id="limYmax">—</span>
       </div>
       <div class="pos-row">
         <span class="pos-axis">Z</span>
-        <span class="pos-lim min" id="limZmin" title="soft limit, low end">—</span>
-        <button class="pos-jog" id="jogZm" onclick="jog('Z',-1)" title="Z − one step">◀</button>
-        <span class="pos-val" id="posZ">—</span>
-        <button class="pos-jog" id="jogZp" onclick="jog('Z',1)" title="Z + one step">▶</button>
-        <span class="pos-lim max" id="limZmax" title="soft limit, high end">—</span>
+        <span class="pos-lim min" id="limZmin">—</span>
+        <div class="numfield" data-jog="Z" style="width:190px" title="Z: ‹ › move one step; type a position and press Enter to go there"><button class="nf-btn" id="jogZm" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="posZ" value="—" onchange="gotoAxis('Z', this)" /><button class="nf-btn" id="jogZp" tabindex="-1">›</button></div>
+        <span class="pos-lim max" id="limZmax">—</span>
       </div>
-      <div class="pos-keys">keys: ← → X · ↑ ↓ Y · PgUp PgDn Z (one step each)</div>
+      <div class="pos-keys">keys: ← → X · ↑ ↓ Y · PgUp PgDn Z</div>
     </div>
 
     <div class="step-panel">
@@ -641,19 +656,16 @@
       </div>
       <div class="custom-step-row">
         <label>CUSTOM</label>
-        <input class="tinput" type="number" id="customStep" placeholder="steps" oninput="setStepCustom(+this.value)" />
+        <div class="numfield" data-step="1" data-min="1" style="width:150px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="customStep" value="100" onchange="setStepCustom(+this.value)" /><button class="nf-btn" tabindex="-1">›</button></div>
+        <label>steps</label>
       </div>
     </div>
 
     <div class="speed-panel">
       <div class="step-label" style="margin-bottom:8px;">Speed · step delay <span style="text-transform:none;">(µs)</span></div>
       <div class="speed-row">
-        <label>FAST</label>
-        <input type="range" min="100" max="5000" value="800" step="50" id="speedSlider" oninput="showSpeed(+this.value)" onchange="setSpeed(+this.value)" />
-        <label>SLOW</label>
-      </div>
-      <div style="text-align:center;margin-top:4px;">
-        <span class="speed-val" id="speedVal">800 µs</span>
+        <div class="numfield" data-step="50" data-min="20" data-max="20000" style="width:150px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="speedInput" value="800" onchange="setSpeed(+this.value)" /><button class="nf-btn" tabindex="-1">›</button></div>
+        <label>lower = faster</label>
       </div>
     </div>
 
@@ -722,20 +734,17 @@
       <div class="cam-controls">
         <div class="cam-ctrl-group">
           <span class="cam-ctrl-label">EXPOSURE</span>
-          <input class="tinput" type="number" id="camExposure" value="400" min="34" max="1000000" style="width:120px;"
-                 onchange="setCamConfig('exposure_us', this)" onkeydown="if(event.key==='Enter')this.blur()" />
+          <div class="numfield" data-step="50" data-min="34" data-max="1000000" style="width:130px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="camExposure" value="400" onchange="setCamConfig('exposure_us', this)" /><button class="nf-btn" tabindex="-1">›</button></div>
           <span class="cam-ctrl-unit">µs</span>
         </div>
         <div class="cam-ctrl-group">
           <span class="cam-ctrl-label">KEEP ≥</span>
-          <input class="tinput" type="number" id="camKeepFrac" value="0.8" min="0" max="1" step="0.02" style="width:90px;"
-                 onchange="setCamConfig('keep_frac', this)" onkeydown="if(event.key==='Enter')this.blur()" />
+          <div class="numfield" data-step="0.02" data-min="0" data-max="1" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="camKeepFrac" value="0.80" onchange="setCamConfig('keep_frac', this)" /><button class="nf-btn" tabindex="-1">›</button></div>
           <span class="cam-ctrl-unit" id="camTopLabel">× top</span>
         </div>
         <div class="cam-ctrl-group">
           <span class="cam-ctrl-label">MAX HOLD</span>
-          <input class="tinput" type="number" id="camMaxHold" value="0.5" min="0" max="10" step="0.1" style="width:90px;"
-                 onchange="setCamConfig('max_hold', this)" onkeydown="if(event.key==='Enter')this.blur()" />
+          <div class="numfield" data-step="0.1" data-min="0" data-max="10" style="width:100px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="camMaxHold" value="0.5" onchange="setCamConfig('max_hold', this)" /><button class="nf-btn" tabindex="-1">›</button></div>
           <span class="cam-ctrl-unit">s</span>
         </div>
         <button class="cam-apply-btn" id="deflickerBtn" onclick="toggleDeflicker()"
@@ -744,6 +753,8 @@
                 title="Projects patterns/calibrate_deflicker.png for 5 s, sets the cutoff from it and keeps it fixed">Calibrate deflicker</button>
         <button class="cam-apply-btn" onclick="showPattern('white_4K.jpg')"
                 title="Project patterns/white_4K.jpg (all white)">White</button>
+        <button class="cam-apply-btn" onclick="openProjModal()"
+                title="Load an image and project it (fit modes, Blank, Close)">Image…</button>
         <span class="cam-err-text" id="camErrText"></span>
       </div>
     </div>
@@ -766,14 +777,14 @@
         <div class="mcard-title" style="margin-bottom:8px;">Autofocus (Z sweep)</div>
         <div class="af-row">
           <label>RANGE ±</label>
-          <input class="tinput" type="number" id="afRange" value="500" min="10" style="width:100px;" />
+          <div class="numfield" data-step="50" data-min="10" style="width:120px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afRange" value="500" /><button class="nf-btn" tabindex="-1">›</button></div>
           <label>STEP</label>
-          <input class="tinput" type="number" id="afStep" value="50" min="1" style="width:90px;" />
+          <div class="numfield" data-step="10" data-min="1" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afStep" value="50" /><button class="nf-btn" tabindex="-1">›</button></div>
           <label style="color:var(--dim);">steps</label>
         </div>
         <div class="af-row" style="margin-bottom:4px;">
           <label>SETTLE</label>
-          <input class="tinput" type="number" id="afSettle" value="300" min="50" style="width:90px;" />
+          <div class="numfield" data-step="50" data-min="50" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afSettle" value="300" /><button class="nf-btn" tabindex="-1">›</button></div>
           <label style="color:var(--dim);">ms after each move</label>
         </div>
         <div class="af-progress-wrap" id="afProgressWrap">
@@ -935,7 +946,7 @@ function startStageEvents() {
 
 function setStatus(label, on) {
   document.getElementById('dot').className = 'status-dot' + (on ? ' on' : '');
-  document.getElementById('statusText').textContent = label;
+  document.getElementById('statusText').textContent = 'stage: ' + label;
   const btn = document.getElementById('connBtn');
   btn.textContent = on ? 'Release stage' : 'Connect stage';
   btn.className = 'conn-btn' + (on ? ' active' : '');
@@ -1094,25 +1105,25 @@ function setStep(v, btn) {
   step = v;
   document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('on'));
   if (btn) btn.classList.add('on');
-  document.getElementById('customStep').value = '';
+  document.getElementById('customStep').value = v;
 }
 
 function setStepCustom(v) {
-  if (v > 0) {
-    step = v;
-    document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('on'));
-  }
+  if (!(v > 0)) { document.getElementById('customStep').value = step; return; }
+  step = Math.round(v);
+  document.querySelectorAll('.step-btn').forEach(b =>
+    b.classList.toggle('on', +b.getAttribute('onclick').match(/setStep\((\d+)/)[1] === step));
 }
 
 // ── Speed ──────────────────────────────────────────────────
-// The slider shows the value while dragging and sends it once on release
-// (every S is a serial command, and any byte aborts a homing seek). The
-// firmware's SPEED reply sets it back, e.g. to 800 after a reset.
+// The field sends S once per committed value (every S is a serial command,
+// and any byte aborts a homing seek). The firmware's SPEED reply sets it
+// back, e.g. to 800 after a reset.
 function showSpeed(v) {
   if (!(v > 0)) return;
   speedDelay = v;
-  document.getElementById('speedSlider').value = v;
-  document.getElementById('speedVal').textContent = v + ' µs';
+  const el = document.getElementById('speedInput');
+  if (document.activeElement !== el) el.value = v;
 }
 
 function setSpeed(v) {
@@ -1138,8 +1149,19 @@ function renderIdleMode() {
 // ── UI Updates ─────────────────────────────────────────────
 function updatePosUI() {
   ['X','Y','Z'].forEach(a => {
-    document.getElementById('pos'+a).textContent = pos[a];
+    const el = document.getElementById('pos'+a);
+    if (document.activeElement !== el) el.value = pos[a];   // don't overwrite typing
   });
+}
+
+// A position typed into an axis field: move that axis there (the firmware
+// clamps to the soft limits), the others stay.
+function gotoAxis(axis, input) {
+  const v = Math.round(parseFloat(input.value));
+  if (!isFinite(v)) { input.value = pos[axis]; return; }
+  if (v === pos[axis]) return;
+  const t = { ...pos, [axis]: v };
+  send(`A ${t.X} ${t.Y} ${t.Z}`);
 }
 
 // The soft limits either side of each position ("—" for an axis without).
@@ -1649,7 +1671,43 @@ function updateClock() {
   if (el.textContent !== t) el.textContent = t;
 }
 
+// ── Number fields ──────────────────────────────────────────
+// <div class="numfield" data-step data-min data-max [data-jog=axis]>
+//   <button class="nf-btn">‹</button><input><button class="nf-btn">›</button>
+// The arrows change the value by data-step and commit it at once (the
+// input's change event); position fields jog one step instead. Typed values
+// commit on Enter or when focus leaves; Escape reverts; Up/Down nudge.
+function initNumFields() {
+  document.querySelectorAll('.numfield').forEach(f => {
+    const inp = f.querySelector('input');
+    const [dec, inc] = f.querySelectorAll('.nf-btn');
+    const stepStr = f.dataset.step || '1';
+    const decimals = (stepStr.split('.')[1] || '').length;
+    const bump = dir => {
+      if (f.dataset.jog) { jog(f.dataset.jog, dir); return; }
+      let v = (parseFloat(inp.value) || 0) + dir * parseFloat(stepStr);
+      if (f.dataset.min !== undefined) v = Math.max(+f.dataset.min, v);
+      if (f.dataset.max !== undefined) v = Math.min(+f.dataset.max, v);
+      inp.value = v.toFixed(decimals);
+      inp.dispatchEvent(new Event('change'));
+    };
+    dec.addEventListener('click', () => bump(-1));
+    inc.addEventListener('click', () => bump(1));
+    let before = '';
+    inp.addEventListener('focus', () => { before = inp.value; inp.select(); });
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') inp.blur();
+      else if (e.key === 'Escape') { inp.value = before; inp.blur(); }
+      else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (!f.dataset.jog) bump(e.key === 'ArrowUp' ? 1 : -1);
+      }
+    });
+  });
+}
+
 // ── Init ───────────────────────────────────────────────────
+initNumFields();
 updateClock();
 setInterval(updateClock, 200);
 log('Litho control ready — the stage connects automatically.', 'sys');

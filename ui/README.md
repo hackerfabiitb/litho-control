@@ -41,18 +41,24 @@ Then:
 - **Stage:** nothing to do. The server finds the Uno by its USB ID (with
   `xyz_stage/find_arduino.py`) and connects by itself. The top bar shows
   `connected · COM4`.
-- **Projector:** click **Projector** to load an image and project it.
+- **Projector:** click **Image…** (under the panes) to load an image and project it.
 
 ## Layout
 
 | area | shows |
 | --- | --- |
-| **top bar** | "HackerFab IITB Litho Control", the local time as `YYYY-MM-DD_HH-MM-SS` (24 h), stage status, **Projector**, **Release / Connect stage** |
-| **left column** | **position**: one row per axis, `low limit ◀ position ▶ high limit` (◀ / ▶ move one step down / up; "—" for an axis without limits), then step size, speed, motors between moves, a state snapshot export, and the **serial log** with a raw-command box at the bottom |
+| **top bar** | "HackerFab IITB Litho Control", the local time as `YYYY-MM-DD_HH-MM-SS` (24 h), the **stage** status (`stage: connected · COM4` = the server's serial link to the Uno), **Release / Connect stage** |
+| **left column** | **position**: one row per axis, `limit min [‹ position ›] limit max` ("—" for an axis without limits). ‹ › move one step; typing a position and pressing Enter moves that axis there (clamped to its limits). Then step size (presets, and a field showing the current step), step delay (µs per step, lower = faster), motors between moves, a state snapshot export, and the **serial log** with a raw-command box at the bottom |
 | **PROJECTOR** pane | a screen capture of the projector's display, 1280 px wide, about 5 fps. It shows what the projector is really showing, including the desktop or anything that pops up over the pattern. The **mouse pointer** is drawn in when it's on the projector's screen (screen captures leave it out) |
 | **CAMERA** pane | the deflickered camera feed at full resolution, 1936×1216. The header shows fps in → shown, the frame mean against the keep cutoff, and how many frames were forced |
-| controls under the panes | exposure (µs), keep ≥ (fraction of the top), max hold (s): each is sent when you press Enter or click away. **Deflicker: on/off** (off = every camera frame, flicker included). **Calibrate deflicker**: see below. **White**: projects `patterns/white_4K.jpg` |
+| controls under the panes | exposure (µs, ‹ › ±50), keep ≥ (fraction of the top, ±0.02), max hold (s, ±0.1). **Deflicker: on/off** (off = every camera frame, flicker included). **Calibrate deflicker**: see below. **White**: projects `patterns/white_4K.jpg`. **Image…**: the projector dialog |
 | under the panes | **Z focus**: set / go / autofocus sweep |
+
+**Number fields** all work the same way (a grey box with ‹ › at its ends):
+- ‹ › step the value and apply it at once;
+- a typed value applies on Enter or when you click away;
+- Escape reverts;
+- ↑ / ↓ nudge the value while you're editing.
 
 Text is white at 1.5× litho-ui's sizes, laid out for a 1920×1080 screen.
 Digits are all one width, and changing numbers (camera stats, clock) are
@@ -60,7 +66,7 @@ padded to a fixed width, so the text around them doesn't shift.
 
 **Keys** (anywhere outside a text field): ← → move X, ↑ ↓ move Y, PgUp/PgDn
 move Z, one step each. On X, ← is +X (it moves the stage left), so it lights
-the ▶ button.
+the field's › arrow.
 
 ## Why a Python server, not a JavaScript one
 
@@ -80,7 +86,7 @@ the ▶ button.
 
 ## Projecting
 
-In the **Projector** dialog:
+In the projector dialog (**Image…** under the panes):
 - **Load an image** (PNG, JPG, BMP or TIFF), then click **Project Image**.
 - **Fit modes:**
   - **1:1 pixels** (default): one image pixel per projector input pixel,
@@ -184,6 +190,28 @@ Projector calls return once the change is on screen.
 - **Only one server at a time**, because it uses port 8765.
 
 ## Log
+
+### 2026-10-06 — one number field everywhere; Projector button moved; "stage:" label
+
+- **Number field:** one style, like a Blender number field, for the position
+  of each axis, the step size, the step delay (it replaces the slider), the
+  camera's exposure, keep and max hold, and autofocus range, step and settle.
+  Behaviour is described under Layout.
+- **Position fields:** typing a value and pressing Enter sends `A` for that
+  axis.
+- **Limit labels:** "limit min" / "limit max" headers sit above the limit
+  columns.
+- **Top bar:** the Projector button is gone. Its dialog (load image, fit,
+  Blank, Close) opens from **Image…** next to White. The status reads
+  `stage: …`.
+- **Tested** with Selenium and headless Firefox against the running server:
+  - keep ›/‹ gave 0.82 / 0.80 on the server;
+  - exposure 450 + Enter applied, 999 + Escape reverted, and 400 + click away
+    applied;
+  - the step field followed the presets, and › un-highlighted them.
+
+  The position arrows and typed positions weren't exercised, because they
+  move the stage.
 
 ### 2026-10-06 — position rows with limits and ◀ ▶; jog, go-to and limits panels removed; title and clock
 
