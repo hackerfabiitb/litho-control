@@ -221,6 +221,40 @@ asked for EEPROM.
 
 ## Log
 
+### 2026-10-07 — Y loses ~36 % of its steps faster than 4 ms/step; nothing moves at 20 µs — OPEN
+
+**Method.** Imaged moves with the camera (white projected, fitted view).
+Each axis was approached from the far side first (no backlash). The image
+shift between frames before and after a move was measured by phase
+correlation; 1 step ≈ 4 px when the axis moves fully.
+
+| step delay | X, 40–150 steps | Y, 40–110 steps |
+| --- | --- | --- |
+| 20–200 µs | 0–16 px (no motion: stalls) | 0–16 px (stalls) |
+| 300 µs | 16 px per 40 steps (stalls) | — |
+| 400 µs | 3.95 px/step (moves) | ~0 (stalls) |
+| 500 µs | — | ~0.4 px/step (stalls) |
+| 800 µs | 4.03 px/step | **2.71–2.81 px/step** |
+| 1500 / 2500 µs | — | **2.63 / 2.64 px/step** |
+| 4000 / 6000 µs | 4.11 (at 6000) | 4.03 / 4.13 px/step (moves fully) |
+
+**Interpretation.**
+- **Y skips about a third of its steps at any delay under ~4 ms**, silently:
+  the firmware still counts them. 800 µs is the firmware's and the UI's
+  default, so **Y jogs at the default speed lose steps**, and Y's count may
+  have drifted from the real position.
+- **X is fine from 400 µs.**
+- **Neither axis moves at all at ≤ 200 µs.**
+- With the full move, a step is ≈2.4 µm on both axes (camera scale
+  0.6025 µm/px).
+- Coming back from a Y move also shifts X by ~60 px (~35 µm): mechanical
+  coupling or play.
+
+**Next steps.** Re-zero Y. Jog Y at ≥ 4000 µs until it's fixed in hardware:
+check Y's driver current (Vref) and the mechanics for binding, or add
+acceleration or microstepping. The scan already slows Y moves to 4000 µs on
+its own (`ui/scan.py`).
+
 ### 2026-10-07 — optical tracking shows backlash, a 6 % scale difference and creep at rest; Y hit a stop — OPEN
 
 **Method.** The UI's optical tracking (camera/tracker.py), with white

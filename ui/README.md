@@ -293,16 +293,28 @@ position and stitches the fields into one image (`ui/scan.py`,
      measured scale.
    - **Limits:** positions outside the soft limits are skipped. The scan ends
      by itself when a whole ring lies outside them.
-   - **Speed:** moves use the firmware's current step delay.
+   - **Speed:** your step delay (the step delay field), but never faster
+     than an axis can follow: Y ≥ 4000 µs, X and Z ≥ 800 µs
+     (`MIN_STEP_DELAY_US`). Below that Y silently loses ~36 % of its steps
+     (xyz_stage/README.md, 2026-10-07). Your delay is restored at the end.
+   - **Pitch:** the overlap is PITCH in both camera directions, even with
+     the axes tilted.
+   - **Moves** count as done on `DONE` or on a `POS` line at the target. If
+     neither comes in time, the scan asks with `P` before failing, because a
+     `DONE` can arrive garbled.
+   - **On a failure** the fields collected so far are still saved.
 4. **Each field:**
    1. move;
    2. autofocus (the Z focus panel's range / step / settle; AF: on/off),
       maximising the sharpness of the wafer under white;
    3. median of 5 kept frames;
-   4. **place** it from the calibration, then **refine** by correlating its
-      overlap with what's stitched (`stitch.register`; accepted if the
-      quality is ≥ 10 and the correction ≤ 25 % of the field). The status
-      shows the correction, which absorbs backlash and drift;
+   4. **place** it, predicted from the nearest registered field with a
+      steps → pixels map. The map starts from the calibration and is
+      re-fitted by least squares from every registered field. Then **refine**
+      by correlating its overlap with what's stitched (`stitch.register`;
+      accepted if the quality is ≥ 15 and the correction ≤ 25 % of the
+      field). The status shows the correction, which absorbs backlash and
+      drift;
    5. divide by the **flat field**: the per-pixel median of up to 15 tiles
       from different places. That leaves just the static pattern (falloff,
       DMD fault band, dust), so it isn't repeated in every tile.
@@ -328,8 +340,14 @@ position and stitches the fields into one image (`ui/scan.py`,
     pulled 40 px by the fault band lining up between fields in the same
     column. Hence the seeding.
 
-**Not yet tested on the stage:** the UI was running when it was written. Run
-a short one first: AF range ±150, stop after a few fields.
+**On the stage** (2026-10-07; AF ±10 / step 1; 10 fields, ~11 s each)
+
+| run | what happened |
+| --- | --- |
+| user, first version | stopped by a lost `DONE`, with nothing saved. "HACKER FAB" appeared twice. Two causes: ~5 % Y overlap (the pitch measured along the tilted Y axis), and Y losing steps at the step delay used, so the vertical neighbours couldn't register |
+| 20 µs requested | the calibration saw no motion: **at 20 µs neither axis moves** (X needs ≥ 400 µs, Y ≥ 4000 µs) |
+| 800 µs for all axes | 5 of 10 fields registered. Vertical neighbours were consistently 200–300 px from the prediction: Y moved 2.7 instead of 4.4 px per step |
+| per-axis speeds (current) | **all 10 fields registered** (quality 48–152, corrections up to ~150 px after reversals). An independent check (each neighbouring pair registered on its own overlap, all positions solved by least squares) agrees with the scan's placements within ~1–6 px, and all 21 pairs agree to ≤ 2.1 px (~1 µm) |
 
 ## Fit transform
 
@@ -429,6 +447,12 @@ Projector calls return once the change is on screen.
   2026-10-07, with the second one unable to get COM4 or the camera.)
 
 ## Log
+
+### 2026-10-07 — scan fixed: pitch, prediction, per-axis speeds, lost DONE, save on failure
+
+See "Scan (spiral + stitch)" → On the stage. The root cause of the doubled
+text was Y losing steps at fast step delays (xyz_stage/README.md) plus the
+pitch bug.
 
 ### 2026-10-07 — Scan (spiral + stitch); one server per port
 

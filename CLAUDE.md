@@ -69,6 +69,10 @@
   `E` holds them powered at idle, which squeals. Keep that behaviour in any
   firmware change. When the user allows a test move, keep it tiny (they chose
   ±10 steps) and return to the start position.
+- **Y loses ~36 % of its steps faster than ~4000 µs/step, and nothing moves
+  at <= 200 µs** (measured 2026-10-07; X is fine from 400 µs). The firmware
+  counts the steps anyway. Move Y at >= 4000 µs in anything that relies on
+  its position; `ui/scan.py` does (MIN_STEP_DELAY_US).
 - Limit switches: one per axis on D9/D10/D11 (normally open to GND, pull-ups;
   1 = open, 0 = pressed). Don't assume which pin is which axis: that's in
   `xyz_stage/homing.json`, found by `homing.py`. The far end of each axis is

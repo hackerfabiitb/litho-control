@@ -1667,6 +1667,7 @@ async function toggleScan() {
         af_range: +document.getElementById('afRange').value || 0,
         af_step: +document.getElementById('afStep').value || 50,
         af_settle: +document.getElementById('afSettle').value || 300,
+        step_delay: +document.getElementById('speedInput').value || 800,
       };
       r = await fetch('/scan/start', { method: 'POST', body: JSON.stringify(body),
                                        headers: { 'Content-Type': 'application/json' },

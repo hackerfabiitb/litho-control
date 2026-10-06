@@ -142,7 +142,7 @@ class Mosaic:
         return img, wsum
 
 
-def register(mosaic, flat, tile, predicted, max_shift, scale=0.5, min_overlap=0.08, psr_min=10.0):
+def register(mosaic, flat, tile, predicted, max_shift, scale=0.5, min_overlap=0.08, psr_min=15.0):
     """Refine `predicted` (x, y), the new tile's offset in mosaic px, by
     correlating its overlap with the stitched tiles. Returns
     ((x, y), residual (dx, dy), psr, used) -- `used` False if the match was

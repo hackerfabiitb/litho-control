@@ -46,6 +46,12 @@ SCANS = os.path.join(ROOT, "scans")
 CAL_STEPS = 40
 TILE_FRAMES = 5
 MAX_MOSAIC_PX = 300e6          # above this the saved mosaic is made at half resolution
+# Slowest step delay each axis needs to move the full distance, measured
+# 2026-10-07 by imaging 40-150 step moves: X moved fully from 400 us (800
+# used here for margin); Y moved only ~64 % at <= 2500 us and fully from
+# 4000 us. Faster moves lose steps silently, and the tiles land in the wrong
+# place. Z wasn't measured: it gets X's minimum as a precaution.
+MIN_STEP_DELAY_US = {"X": 800, "Y": 4000, "Z": 800}   # Z: not measured, X's as a precaution
 
 
 def shift_px(a, b):
@@ -86,7 +92,9 @@ class Scan:
                        "af_range": int(params.get("af_range", 500)),
                        "af_step": max(1, int(params.get("af_step", 50))),
                        "af_settle": max(50, int(params.get("af_settle", 300))) / 1000.0,
-                       "autofocus": bool(params.get("autofocus", True))}
+                       "autofocus": bool(params.get("autofocus", True)),
+                       "step_delay": max(20, int(params.get("step_delay", 800)))}
+        self._delay_sent = None
         if not 0.2 <= self.params["pitch"] <= 0.95:
             raise RuntimeError("pitch must be between 0.2 and 0.95 of the field")
         self.stop_flag.clear()
@@ -131,20 +139,54 @@ class Scan:
                 ok &= lo <= val <= hi
         return ok
 
-    def _move(self, x, y, z, timeout=120):
+    def _clamped(self, x, y, z):
+        """Where the firmware will really go: it clamps to the soft limits."""
+        lim = self._limits()
+        out = []
+        for a, v in zip("XYZ", (int(x), int(y), int(z))):
+            lo, hi = lim[a] if lim else (0, 0)
+            out.append(min(hi, max(lo, v)) if lo != hi else v)
+        return out
+
+    def _move(self, x, y, z, timeout=None):
+        """Move and wait until it's finished: on DONE, or on a POS line at
+        the target (the firmware sends POS then DONE; either can arrive
+        garbled -- seen 2026-10-07, a lost DONE during 1-step Z moves).
+        If neither comes in time, ask for the position (P) before failing."""
+        target = self._clamped(x, y, z)
+        start = self._pos()
+        steps = max(abs(t - c) for t, c in zip(target, start)) if start is not None else 10000
+        # speed: the user's step delay, slowed where an axis would lose steps
+        delay = self.params["step_delay"]
+        for i, a in enumerate("XYZ"):
+            if start is not None and target[i] != start[i]:
+                delay = max(delay, MIN_STEP_DELAY_US.get(a, 0))
+        if delay != self._delay_sent:
+            self.stage.send(f"S {delay}")
+            self._delay_sent = delay
+        timeout = timeout or 5.0 + steps * (1.5 * delay * 1e-6 + 1e-3)
         done = threading.Event()
 
         def on_line(line):
             if line == "DONE":
                 done.set()
+            elif line.startswith("POS "):
+                try:
+                    if [int(v) for v in line.split()[1:4]] == target:
+                        done.set()
+                except ValueError:
+                    pass
         self.stage.listeners.append(on_line)
         try:
-            self.stage.send(f"A {int(x)} {int(y)} {int(z)}")
+            self.stage.send(f"A {target[0]} {target[1]} {target[2]}")
             if not done.wait(timeout):
-                raise RuntimeError(f"no DONE from the stage for A {x} {y} {z}")
+                self.stage.send("P")                        # did it get there anyway?
+                if not done.wait(3.0):
+                    raise RuntimeError(f"stage didn't confirm the move to {target} "
+                                       f"(no DONE, last POS {self._pos()})")
         finally:
             self.stage.listeners.remove(on_line)
-        time.sleep(0.05)                                    # POS arrives just before DONE
+        time.sleep(0.05)
 
     def _frames(self, n, settle):
         """The next n kept (fitted) frames after `settle` seconds."""
@@ -180,6 +222,32 @@ class Scan:
                 best_z, best_s = z, s
         self._move(x, y, best_z)
         return best_z, best_s
+
+    @staticmethod
+    def _predict(pos, placed, M):
+        """Offset of a tile at `pos` (steps): from the nearest registered
+        tile (errors don't pile up over the spiral)."""
+        if not placed:
+            return (0.0, 0.0)
+        p = np.array(pos[:2], float)
+        good = [t for t in placed if t[2]] or placed
+        s, o, _ = min(good, key=lambda t: np.hypot(*(t[0] - p)))
+        return tuple(o + M @ (p - s))
+
+    @staticmethod
+    def _refit(placed, M):
+        """Least-squares mosaic px per step from the registered tiles, once
+        they span both axes; otherwise keep M."""
+        good = [t for t in placed if t[2]]
+        if len(good) < 3:
+            return M
+        s0, o0, _ = good[0]
+        S = np.array([t[0] - s0 for t in good[1:]])
+        O = np.array([t[1] - o0 for t in good[1:]])
+        if np.linalg.matrix_rank(S) < 2:
+            return M
+        sol, *_ = np.linalg.lstsq(S, O, rcond=None)          # O = S @ sol  ->  M = sol.T
+        return sol.T
 
     def _publish(self, mosaic, flat):
         x0, y0, x1, y1 = mosaic.bounds()
@@ -244,15 +312,24 @@ class Scan:
             h, w = f0.shape
             pitch = []
             for i in range(2):                               # steps per field along X and Y
-                v = C[:, i]
-                u = v / np.hypot(*v)
-                extent = abs(u[0]) * w + abs(u[1]) * h        # field size along that direction
-                pitch.append(max(1, int(round(self.params["pitch"] * extent / np.hypot(*v)))))
+                # D steps move the view by D*|v_x| px across and D*|v_y| px
+                # down; the overlap is the smaller of 1 - D|v_x|/w and
+                # 1 - D|v_y|/h, so the pitch is set by the tighter one. (The
+                # first version measured the field "along" a tilted axis and
+                # left ~5 % overlap in Y.)
+                vx, vy = abs(C[0, i]), abs(C[1, i])
+                d = self.params["pitch"] * min(w / max(vx, 1e-9), h / max(vy, 1e-9))
+                pitch.append(max(1, int(round(d))))
             record["calibration"] = {"cam_px_per_step": C.tolist(), "pitch_steps": pitch,
                                      "um_per_px": FIELD_WIDTH_UM / cam.transform["size"][0]}
             um_per_step = [np.hypot(*C[:, i]) * FIELD_WIDTH_UM / cam.transform["size"][0] for i in range(2)]
             self._set(calibration={"pitch_steps": pitch, "um_per_step": [round(u, 3) for u in um_per_step]})
 
+            # mosaic px per step: the view moves opposite to the image. Refitted
+            # from the registered tiles as they come (the 40-step calibration
+            # was ~7 % off for 300-step moves on 2026-10-07).
+            M = -C
+            placed = []                                      # (steps xy, offset px, registered)
             ring_valid, ring = False, 0
             for i, j in stitch.spiral():
                 r = max(abs(i), abs(j))
@@ -277,8 +354,7 @@ class Scan:
                 self._set(phase=f"field {n + 1} ({i:+d},{j:+d}): capturing")
                 tile = self._tile(self.params["af_settle"])
                 pos = self._pos()
-                d_steps = np.array([pos[0] - sx, pos[1] - sy], float)
-                predicted = tuple(-(C @ d_steps))             # the view moves opposite to the image
+                predicted = self._predict(pos, placed, M)
                 if n == 0:
                     offset, residual, q, used = predicted, (0.0, 0.0), 0.0, False
                 else:
@@ -286,8 +362,11 @@ class Scan:
                     offset, residual, q, used = stitch.register(mosaic, flat, tile, predicted, max_shift)
                 mosaic.tiles.append(tile)
                 mosaic.offsets.append(tuple(float(v) for v in offset))
+                placed.append((np.array(pos[:2], float), np.array(offset, float), n == 0 or used))
+                M = self._refit(placed, M)
                 flat.add(tile)
                 cv2.imwrite(os.path.join(out_dir, f"tile_{n:03d}.png"), tile)
+                record["px_per_step"] = M.tolist()
                 record["tiles"].append({"index": n, "grid": [i, j], "steps": [int(v) for v in pos],
                                         "z": int(z), "sharpness": score,
                                         "predicted_px": [round(v, 1) for v in predicted],
@@ -298,37 +377,49 @@ class Scan:
                 self._set(tiles=n + 1, phase=f"field {n + 1} done", last_residual=[round(v, 1) for v in residual],
                           last_quality=round(q, 1), last_registered=bool(used))
 
-            # save
-            if mosaic.tiles:
-                self._set(phase="saving")
-                final = stitch.FlatField()
-                for t in mosaic.tiles[-final.MAX:]:
-                    final.add(t)
-                x0, y0, x1, y1 = mosaic.bounds()
-                scale = 1.0 if (x1 - x0) * (y1 - y0) <= MAX_MOSAIC_PX else 0.5
-                img, _ = mosaic.render(scale, final)
-                img = np.clip(img, 0, 255).astype(np.uint8)
-                cv2.imwrite(os.path.join(out_dir, "mosaic.png"), img)
-                prev = self._publish(mosaic, final)
-                cv2.imwrite(os.path.join(out_dir, "preview.jpg"), prev)
-                record["mosaic"] = {"file": "mosaic.png", "scale": scale, "size_px": [img.shape[1], img.shape[0]],
-                                    "um_per_px": record["calibration"]["um_per_px"] / scale,
-                                    "origin_px": [x0, y0]}
+            self._save(mosaic, out_dir, record)
             record["finished"] = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             with open(os.path.join(out_dir, "scan.json"), "w", encoding="utf-8") as fh:
                 json.dump(record, fh, indent=2)
             self._set(phase="saved", saved=os.path.relpath(out_dir, ROOT))
             print(f"[scan] saved {len(mosaic.tiles)} fields to {out_dir}", flush=True)
-        except Exception as exc:                            # report it in the UI
+        except Exception as exc:                            # report it in the UI, keep what there is
             self._set(phase="failed", error=str(exc))
             print(f"[scan] failed: {exc}", flush=True)
+            try:
+                self._save(mosaic, out_dir, record)
+                self._set(saved=os.path.relpath(out_dir, ROOT))
+            except Exception as exc2:
+                print(f"[scan] saving after the failure failed too: {exc2}", flush=True)
             try:
                 with open(os.path.join(out_dir, "scan.json"), "w", encoding="utf-8") as fh:
                     json.dump({**record, "error": str(exc)}, fh, indent=2)
             except OSError:
                 pass
         finally:
+            try:
+                self.stage.send(f"S {self.params['step_delay']}")   # the user's speed back
+            except Exception:
+                pass
             self.mirror.paused = False
             proj.restore()
             cam.configure(exposure_us=exposure_before)
             self._set(active=False)
+
+    def _save(self, mosaic, out_dir, record):
+        """mosaic.png (+ preview.jpg) from the tiles so far."""
+        if mosaic.tiles:
+            self._set(phase="saving")
+            final = stitch.FlatField()
+            for t in mosaic.tiles[-final.MAX:]:
+                final.add(t)
+            x0, y0, x1, y1 = mosaic.bounds()
+            scale = 1.0 if (x1 - x0) * (y1 - y0) <= MAX_MOSAIC_PX else 0.5
+            img, _ = mosaic.render(scale, final)
+            img = np.clip(img, 0, 255).astype(np.uint8)
+            cv2.imwrite(os.path.join(out_dir, "mosaic.png"), img)
+            prev = self._publish(mosaic, final)
+            cv2.imwrite(os.path.join(out_dir, "preview.jpg"), prev)
+            um = record.get("calibration", {}).get("um_per_px")
+            record["mosaic"] = {"file": "mosaic.png", "scale": scale, "size_px": [img.shape[1], img.shape[0]],
+                                "um_per_px": um / scale if um else None, "origin_px": [x0, y0]}
