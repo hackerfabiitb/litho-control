@@ -57,7 +57,10 @@
   adapter. Opening the port resets the Uno. Only one program can hold COM4 at
   a time, and `ui/server.py` holds it while running. To use the stage from a
   script, go through the server (`POST /stage/send`) instead of opening COM4.
-  To flash, `POST /stage/disconnect` first and `/stage/connect` after. Never
+  To flash, `POST /stage/disconnect` first and `/stage/connect` after.
+  Before starting a test server, check `curl 127.0.0.1:8765/stage/status`:
+  if the user's UI answers, use it rather than restarting it (a second
+  server now refuses to start). Never
   send the Uno anything in the ~1.5 s after opening the port: the bootloader
   reads it as commands. Wait for `READY`.
 - Don't send motion commands to the stage without the user's go-ahead: no

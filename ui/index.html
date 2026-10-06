@@ -530,6 +530,23 @@
       <div class="track-note" id="trackNote">Shows the stage's motion counted from motor steps next to the wafer's motion measured by the camera.</div>
     </div>
 
+    <!-- SCAN -->
+    <div class="subpanel" id="scanPanel">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <div class="step-label" style="margin:0;">Scan (spiral + stitch)</div>
+        <button class="cam-apply-btn" id="scanBtn" onclick="toggleScan()"
+                title="From here: fields in a spiral, white + autofocus at each, stitched live into the projector preview. Stop finishes the current field and saves.">Start</button>
+      </div>
+      <div class="af-row" style="margin-top:8px;">
+        <label>PITCH</label>
+        <div class="numfield" data-step="5" data-min="20" data-max="95" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="scanPitch" value="70" /><button class="nf-btn" tabindex="-1">›</button></div>
+        <span class="unit">% of a field</span>
+        <button class="cam-apply-btn" id="scanAfBtn" onclick="toggleScanAf()"
+                title="Autofocus at every field, with the Z focus panel's range / step / settle">AF: on</button>
+      </div>
+      <div class="track-note" id="scanNote">Needs Fit transform and features on the wafer. Uses the current step delay and the autofocus settings below.</div>
+    </div>
+
     <div class="step-panel">
       <div class="step-label">Step size</div>
       <div class="step-grid">
@@ -1629,6 +1646,78 @@ async function _pollTracking() {
   } catch (_) { /* server down */ }
 }
 
+// ── Scan ───────────────────────────────────────────────────
+// The server walks a spiral of fields, autofocuses and stitches
+// (ui/scan.py); the stitched image replaces the projector preview.
+let scanActive = false, scanAf = true;
+
+function toggleScanAf() {
+  scanAf = !scanAf;
+  document.getElementById('scanAfBtn').textContent = 'AF: ' + (scanAf ? 'on' : 'off');
+}
+
+async function toggleScan() {
+  const btn = document.getElementById('scanBtn');
+  try {
+    let r;
+    if (!scanActive) {
+      const body = {
+        pitch: (+document.getElementById('scanPitch').value || 70) / 100,
+        autofocus: scanAf,
+        af_range: +document.getElementById('afRange').value || 0,
+        af_step: +document.getElementById('afStep').value || 50,
+        af_settle: +document.getElementById('afSettle').value || 300,
+      };
+      r = await fetch('/scan/start', { method: 'POST', body: JSON.stringify(body),
+                                       headers: { 'Content-Type': 'application/json' },
+                                       signal: AbortSignal.timeout(5000) });
+    } else {
+      btn.disabled = true;
+      r = await fetch('/scan/stop', { method: 'POST', signal: AbortSignal.timeout(5000) });
+    }
+    const st = await r.json();
+    if (!r.ok) throw new Error(st.error || ('HTTP ' + r.status));
+    log(scanActive ? 'Scan: stopping after the current field' : 'Scan: started', 'sys');
+    _showScan(st);
+  } catch (e) {
+    log('Scan: ' + e.message, 'err');
+    btn.disabled = false;
+  }
+}
+
+function _showScan(st) {
+  const was = scanActive;
+  scanActive = !!st.active;
+  const btn = document.getElementById('scanBtn');
+  btn.textContent = scanActive ? 'Stop' : 'Start';
+  btn.disabled = scanActive && (st.phase || '').includes('stopping');
+  if (!scanActive) btn.disabled = false;
+  const note = document.getElementById('scanNote');
+  if (st.error) {
+    note.style.color = 'var(--danger)';
+    note.textContent = 'Failed: ' + st.error;
+  } else if (scanActive || st.saved) {
+    note.style.color = '';
+    const cal = st.calibration ? `\npitch ${st.calibration.pitch_steps.join(' × ')} steps · ` +
+                                 `${st.calibration.um_per_step.map(u => u.toFixed(2)).join(' / ')} µm per X / Y step` : '';
+    const reg = st.last_residual ? `\nlast field: placed ${st.last_registered ? 'by its overlap' : 'from the steps only'}` +
+                                   ` (corrected ${st.last_residual.map(v => v.toFixed(0)).join(', ')} px, quality ${st.last_quality.toFixed(0)})` : '';
+    note.textContent = `${st.phase || ''} · ${st.tiles || 0} fields` + cal + reg +
+                       (st.saved ? `\nsaved: ${st.saved}` : '');
+  }
+  if (was && !scanActive) {
+    log(st.error ? 'Scan failed: ' + st.error : `Scan saved ${st.tiles} fields to ${st.saved}`, st.error ? 'err' : 'sys');
+    _refreshProjStatus();
+  }
+}
+
+async function _pollScan() {
+  try {
+    const r = await fetch('/scan/status', { signal: AbortSignal.timeout(1500) });
+    if (r.ok) _showScan(await r.json());
+  } catch (_) { /* server down */ }
+}
+
 // ── Clock ──────────────────────────────────────────────────
 // Local time as YYYY-MM-DD_HH-MM-SS (24 h).
 function updateClock() {
@@ -1687,6 +1776,8 @@ loadFocus();
 setInterval(_updateLiveSharpness, 500);
 _pollTracking();
 setInterval(() => { if (trackActive) _pollTracking(); }, 300);
+_pollScan();
+setInterval(() => { if (scanActive) _pollScan(); }, 500);
 
 // Auto-try camera server on load and keep polling
 camPingTimer = setInterval(_pingCamServer, 1000);

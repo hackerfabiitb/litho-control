@@ -35,6 +35,12 @@ POST /camera/fit_transform   project white, find the projected image's outline
                              field (saved in camera/fit_transform.json)
 GET  /focus_score            Laplacian variance of the latest shown camera frame
                              (sharpness: what autofocus maximises)
+POST /scan/start             {"pitch": 0.7, "af_range", "af_step", "af_settle" (ms),
+                             "autofocus": true}: image the wafer field by field in a
+                             spiral from here and stitch it (ui/scan.py); the
+                             stitched image replaces the projector preview
+POST /scan/stop              finish the current field, save to scans/<date>/
+GET  /scan/status            phase, fields done, last registration, saved folder
 POST /track/start            optical tracking: project white, pick an unclipped
                              exposure, and measure the wafer's motion from the
                              camera (camera/tracker.py); needs Fit transform
@@ -95,6 +101,7 @@ sys.path.insert(0, os.path.join(ROOT, "xyz_stage"))
 from deflicker import KeepFilter, relative_cutoff  # noqa: E402
 from optics import FIELD_WIDTH_UM  # noqa: E402
 from tracker import AxisMap, Tracker  # noqa: E402
+from scan import Scan  # noqa: E402  (ui/scan.py)
 from fit_transform import draw_debug, find_quad, make_transform  # noqa: E402
 from display import (PatternWindow, detached_displays, extend_desktop,  # noqa: E402
                      find_projector, make_pattern)  # (importing display sets DPI awareness)
@@ -306,7 +313,7 @@ class Stage(threading.Thread):
                                 and load_focus()["z"] is None):
                             save_focus(int(line[6:]), "adopted from the Uno (FOCUS SET)")
                         self.emit("line", line)
-                        for listener in self.listeners:
+                        for listener in list(self.listeners):
                             listener(line)
                         if line == "READY":
                             # The first line after a reset often arrives with
@@ -357,6 +364,7 @@ class Camera(threading.Thread):
         self.transform_on = True
         self._warp = None                    # (matrix, size) while the transform is on
         self.tracker = None                  # a camera/tracker.Tracker while tracking
+        self.frame_seq = 0                   # counts kept frames (scan waits on it)
         # appended by the grab thread, only read elsewhere
         self.in_times, self.shown_times = deque(maxlen=400), deque(maxlen=400)
         self.stop_flag = threading.Event()
@@ -588,6 +596,7 @@ class Camera(threading.Thread):
                             frame = cv2.warpPerspective(frame, warp[0], warp[1],
                                                         flags=cv2.INTER_LINEAR)
                         self.last_frame = frame
+                        self.frame_seq += 1
                         tracker = self.tracker
                         if tracker is not None:
                             tracker.feed(frame)
@@ -791,13 +800,14 @@ class Mirror(threading.Thread):
         self.width = width
         self.period = 1.0 / fps
         self.stream = Latest()
+        self.paused = False                  # a scan shows its stitched image here instead
 
     def run(self):
         import mss
         with mss.MSS() as grabber:
             while True:
                 m = self.projector.monitor
-                if not self.stream.clients or m is None:
+                if not self.stream.clients or m is None or self.paused:
                     time.sleep(0.2)
                     continue
                 rect = {"left": m.x, "top": m.y, "width": m.width, "height": m.height}
@@ -957,7 +967,21 @@ class Tracking:
 # HTTP
 # --------------------------------------------------------------------------- #
 
-def make_handler(stage, camera, projector, mirror, shutdown, tracking):
+class UIServer(ThreadingHTTPServer):
+    """One server per port: no SO_REUSEADDR, and SO_EXCLUSIVEADDRUSE on
+    Windows, so a second copy fails to bind instead of sharing the port."""
+
+    allow_reuse_address = False
+    daemon_threads = True
+
+    def server_bind(self):
+        import socket
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def make_handler(stage, camera, projector, mirror, shutdown, tracking, scan):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
             pass
@@ -1058,6 +1082,8 @@ def make_handler(stage, camera, projector, mirror, shutdown, tracking):
                 self._json(load_focus())
             elif path == "/track/status":
                 self._json(tracking.status())
+            elif path == "/scan/status":
+                self._json(scan.status())
             elif path == "/focus_score":
                 f = camera.last_frame
                 score = 0.0 if f is None else float(cv2.Laplacian(f, cv2.CV_64F).var())
@@ -1150,7 +1176,18 @@ def make_handler(stage, camera, projector, mirror, shutdown, tracking):
                         projector.source = load_pattern(name)
                         projector.image_name = os.path.basename(name)
                     self._projector_reply(projector.do("show"))
+                elif url.path == "/scan/start":
+                    try:
+                        scan.start(json.loads(self._body() or b"{}"))
+                    except RuntimeError as exc:
+                        return self._json({**scan.status(), "error": str(exc)}, 409)
+                    self._json(scan.status())
+                elif url.path == "/scan/stop":
+                    scan.stop()
+                    self._json(scan.status())
                 elif url.path in ("/track/start", "/track/stop", "/track/zero"):
+                    if url.path == "/track/start" and scan.status().get("active"):
+                        return self._json({**tracking.status(), "error": "a scan is running"}, 409)
                     try:
                         getattr(tracking, url.path.rsplit("/", 1)[1])()
                     except RuntimeError as exc:
@@ -1196,19 +1233,29 @@ def main():
     projector = Projector(args.monitor, auto_extend=not args.no_extend)
     mirror = Mirror(projector)
     tracking = Tracking(stage, camera, projector)
-    for t in (stage, camera, projector, mirror):
-        t.start()
-
+    scan = Scan(stage, camera, projector, mirror, tracking, encode, load_pattern,
+                FIT_EXPOSURE_US, steps_per_mm())
     def shutdown():
         # serve_forever() returns once shutdown() is called from another
         # thread; then the cleanup below runs, as for Ctrl+C.
         print("shutdown requested (UI window closed)", flush=True)
         threading.Thread(target=server.shutdown, daemon=True).start()
 
-    server = ThreadingHTTPServer(("127.0.0.1", args.port),
-                                 make_handler(stage, camera, projector, mirror,
-                                              shutdown, tracking))
-    server.daemon_threads = True
+    # Take the port first, and exclusively: on Windows the default
+    # SO_REUSEADDR lets a second server bind the same port (seen 2026-10-07:
+    # two servers answered on 8765, one of them unable to get COM4 or the
+    # camera). A second copy now stops here, before touching any hardware.
+    try:
+        server = UIServer(("127.0.0.1", args.port),
+                          make_handler(stage, camera, projector, mirror,
+                                       shutdown, tracking, scan))
+    except OSError as exc:
+        print(f"port {args.port} is already in use ({exc}).\n"
+              f"  Is the UI already running? Close its window (or Ctrl+C in its "
+              f"terminal) first.", flush=True)
+        sys.exit(1)
+    for t in (stage, camera, projector, mirror):
+        t.start()
     print(f"UI on http://localhost:{args.port}   Ctrl+C to stop", flush=True)
     if projector.monitor is None:
         print(f"projector display not found ({projector.error}).\n"

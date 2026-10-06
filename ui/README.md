@@ -272,6 +272,65 @@ long moves, use a slower step delay, or expect LOST and press Zero after.
   Synthetic: a 3000 px (1.8 mm) run in jumps of 25–40 % of the field
   tracked to 0.1 px.
 
+## Scan (spiral + stitch)
+
+**Scan** (STAGE panel) images the wafer field by field around the current
+position and stitches the fields into one image (`ui/scan.py`,
+`camera/stitch.py`). It needs Fit transform, and features on the wafer.
+
+1. **Setup.** Projects white and picks an unclipped exposure. The stitched
+   image replaces the live projector preview while it runs; the projector
+   only shows white.
+2. **Calibration** (~10 s).
+   - For X and for Y: approach the start from −40 steps (so backlash doesn't
+     count), take a frame, move +40 steps, take another, go back.
+   - The image shift per step, measured by correlation, gives the camera
+     px per step: the 3.5° rotation and the real scale, not the nominal.
+   - The three frames also seed the flat field.
+3. **Spiral.** A square spiral of fields from the start.
+   - **Pitch:** PITCH × the field (default 70 %, so neighbours share ~30 %
+     for registration). That is ≈280 steps in X and ≈170 in Y with the
+     measured scale.
+   - **Limits:** positions outside the soft limits are skipped. The scan ends
+     by itself when a whole ring lies outside them.
+   - **Speed:** moves use the firmware's current step delay.
+4. **Each field:**
+   1. move;
+   2. autofocus (the Z focus panel's range / step / settle; AF: on/off),
+      maximising the sharpness of the wafer under white;
+   3. median of 5 kept frames;
+   4. **place** it from the calibration, then **refine** by correlating its
+      overlap with what's stitched (`stitch.register`; accepted if the
+      quality is ≥ 10 and the correction ≤ 25 % of the field). The status
+      shows the correction, which absorbs backlash and drift;
+   5. divide by the **flat field**: the per-pixel median of up to 15 tiles
+      from different places. That leaves just the static pattern (falloff,
+      DMD fault band, dust), so it isn't repeated in every tile.
+5. **Stop** finishes the current field, then saves `scans/<date>/` (git-ignored):
+   - `mosaic.png`: full resolution, flat-corrected, feathered seams (half
+     resolution above 300 Mpx);
+   - `preview.jpg`;
+   - `tile_NNN.png`: the raw tiles;
+   - `scan.json`: per tile the grid, steps, Z, sharpness, predicted and
+     registered offsets and registration quality; plus the calibration and
+     µm/px.
+
+   Then it puts back the projector and the exposure. The stage stays at the
+   last field.
+
+**Tested offline**
+- **Your recorded X +100 frames:** registration turned a prediction of
+  (400, 0) px into (442, 26), against (440, 27) measured directly; 59 ms.
+- **Synthetic 9-field spiral at 70 %**, with the static fault band and dust,
+  and predictions off by 6 % scale plus 30 px backlash: all fields within
+  1.5 px, rms 0.7 px (0.4 µm).
+  - Without the calibration frames seeding the flat field, one field was
+    pulled 40 px by the fault band lining up between fields in the same
+    column. Hence the seeding.
+
+**Not yet tested on the stage:** the UI was running when it was written. Run
+a short one first: AF range ±150, stop after a few fields.
+
 ## Fit transform
 
 **Fit transform** (CAMERA panel) shows only the projected field, upright and
@@ -314,6 +373,7 @@ projector's desktop (1776×999).*
 | `POST /camera/fit_transform` | Fit transform (above); ~2 s, answers with the stats, or 409 if the camera or projector is missing or no outline is found. `POST /config {"transform": false}` shows the whole sensor again |
 | `POST /camera/calibrate` | deflicker calibration (above); takes ~6 s, answers with the stats, or 409 if the camera or projector is missing |
 | `GET /focus_score` | Laplacian variance of the latest shown camera frame (sharpness) |
+| `POST /scan/start` `{"pitch", "autofocus", "af_range", "af_step", "af_settle"}`, `POST /scan/stop`, `GET /scan/status` | the scan (above). Status: `phase`, `tiles`, `calibration` (pitch in steps, µm per step), `last_residual` / `last_quality` / `last_registered`, `saved`, `error` |
 | `POST /track/start`, `/track/stop`, `/track/zero`; `GET /track/status` | optical tracking (above). Status: `stepper_um`, `optical_um`, `diff_um` (X/Y), `u_um`/`v_um` (camera axes), `status` (tracking / lost), `psr` (quality), `rate` (Hz), `axes` learned |
 | `GET /focus`, `POST /focus` | the saved focus `{"z", "source", "date"}`; POST `{"z": …, "source": …}` saves it (`xyz_stage/focus.json`) |
 | `POST /camera/auto_exposure` | set the exposure so the lit frames of the current projection are bright but unclipped (p99 120–235); answers with the stats plus `exposure_us`, `p99` |
@@ -363,9 +423,20 @@ Projector calls return once the change is on screen.
   keep ≥ 0.8 × recent top, 0.5 s max hold. The same rule is used
   (`camera/deflicker.py`), with the top frozen once calibrated. Override them with
   `server.py --exposure --keep-frac --max-hold`.
-- **Only one server at a time**, because it uses port 8765.
+- **Only one server at a time.** It takes port 8765 exclusively, before
+  touching any hardware; a second copy exits with "port 8765 is already in
+  use". (Python's default on Windows let two servers share the port. Seen
+  2026-10-07, with the second one unable to get COM4 or the camera.)
 
 ## Log
+
+### 2026-10-07 — Scan (spiral + stitch); one server per port
+
+- **Scan:** see "Scan (spiral + stitch)": `ui/scan.py`, `camera/stitch.py`,
+  `/scan/*`, and a Scan subpanel. Tracking is refused while a scan runs.
+- **Port:** `UIServer` binds 8765 exclusively, before starting any thread.
+  Checked: with the UI running, a second `server.py` printed "port 8765 is
+  already in use" and exited 1; the running UI stayed connected.
 
 ### 2026-10-07 — optical tracking
 
