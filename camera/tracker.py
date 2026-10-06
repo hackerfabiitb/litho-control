@@ -17,9 +17,13 @@ ratio >= PSR_MIN); otherwise the wafer is taken not to have moved. Cost: a
 dead band of ~ZERO_RADIUS px (x2 for the downscale) around the reference.
 
 Large moves: when the shift from the keyframe passes KEY_FRACTION of the
-frame, the current frame becomes the keyframe and the shift so far is banked.
-If the moving peak disappears (too fast, out of the field, featureless area)
-the tracker says "lost" and keeps trying against the last keyframe.
+frame, the current frame becomes the keyframe and the shift so far is banked,
+so the features seen at the start can leave the field entirely: the chain
+of keyframes carries the position. If a frame doesn't match the keyframe
+(it moved too far since), it is tried against the last frame that matched
+and, if that works, becomes the new keyframe. Only if both fail (too fast,
+out of the field, featureless area) does the tracker say "lost"; it keeps
+trying against both.
 
 Axes: the camera's axes are not the stage's. AxisMap learns, from moves of a
 single stage axis, which camera direction is stage +X and +Y (direction
@@ -104,6 +108,7 @@ class Tracker:
         self._stop = threading.Event()
         self.window = None
         self.key = None                       # keyframe spectrum
+        self.last_good = None                 # (spectrum, shift) of the last frame that matched
         self.banked = np.zeros(2)             # shift of the keyframe from the start, px (full res)
         self.shift = np.zeros(2)              # current shift from the start, px (full res)
         self.psr = 0.0
@@ -125,6 +130,7 @@ class Tracker:
     def reset(self):
         with self.lock:
             self.key = None
+            self.last_good = None
             self.banked[:] = 0
             self.shift[:] = 0
             self.status = "starting"
@@ -159,17 +165,30 @@ class Tracker:
             if self.key is None:
                 self.key, self.status = cur, "tracking"
                 self.shift = self.banked.copy()
+                self.last_good = (cur, self.shift.copy())
                 return
-            key = self.key
+            key, last_good = self.key, self.last_good
         dx, dy, psr = correlate(key, cur)
+        fallback = None
+        if psr < PSR_MIN and last_good is not None and last_good[0] is not key:
+            fdx, fdy, fpsr = correlate(last_good[0], cur)
+            if fpsr >= PSR_MIN:
+                fallback = (fdx, fdy, fpsr)
         with self.lock:
             self.psr = psr
             if psr >= PSR_MIN:
                 d = np.array([dx, dy]) / SCALE
                 self.shift = self.banked + d
                 self.status = "tracking"
+                self.last_good = (cur, self.shift.copy())
                 if max(abs(dx) / w, abs(dy) / h) > KEY_FRACTION:
                     self.key, self.banked = cur, self.shift.copy()
+            elif fallback is not None:          # too far from the keyframe: chain on
+                fdx, fdy, self.psr = fallback
+                self.shift = last_good[1] + np.array([fdx, fdy]) / SCALE
+                self.key, self.banked = cur, self.shift.copy()
+                self.last_good = (cur, self.shift.copy())
+                self.status = "tracking"
             elif np.hypot(*(self.shift - self.banked)) > 3 * ZERO_RADIUS / SCALE:
                 self.status = "lost"          # we had a moving peak and it's gone
             else:

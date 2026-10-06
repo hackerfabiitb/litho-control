@@ -891,7 +891,7 @@ class Tracking:
             self.um_per_px = FIELD_WIDTH_UM / cam.transform["size"][0]
             self.tracker = Tracker(self.um_per_px)
             self.start_pos = self._pos()
-            self.anchor = None
+            self.anchor = (self.start_pos, np.zeros(2))   # so the first move is learned too
             cam.tracker = self.tracker
             print(f"[track] started: {self.um_per_px:.4f} um per fitted px, "
                   f"exposure {cam.exposure_us:g} us", flush=True)
@@ -912,7 +912,7 @@ class Tracking:
         if self.active:
             self.tracker.reset()
             self.start_pos = self._pos()
-            self.anchor = None
+            self.anchor = (self.start_pos, np.zeros(2))
 
     def _on_line(self, line):
         if line == "DONE" and self.active:

@@ -254,7 +254,23 @@ long moves, use a slower step delay, or expect LOST and press Zero after.
   A 20 % slip showed as optical 200 vs stepper 250 µm.
 - **Live, stage still, 10 s:** optical held 0.0 / 0.0 µm. Noise peaks
   reached quality ≤ 7.4, below the threshold of 15.
-- **Not yet done:** a real stage move. Please try one.
+- **Live moves** (2026-10-07, step delay 3000 µs): X +100 / −100 was
+  measured the same way by one direct correlation, frame-to-frame chaining
+  and the tracker, within ~3 px (2 µm).
+  - The differences from the stepper are real stage behaviour: ~6 % more
+    travel than nominal, ~20 µm backlash, and ~8 µm creep at rest (see
+    xyz_stage/README.md).
+  - A 500-step X move (1.25 mm, past the field width, so the starting
+    features left the view) stayed tracking (quality 217).
+  - A Y move that hit a physical stop showed as a 585 µm difference.
+- **Fixed after the first live use:**
+  - the first move after Start wasn't learned (Start now records the
+    reference point);
+  - frames that no longer match the reference frame are tried against the
+    last matched frame before LOST.
+
+  Synthetic: a 3000 px (1.8 mm) run in jumps of 25–40 % of the field
+  tracked to 0.1 px.
 
 ## Fit transform
 

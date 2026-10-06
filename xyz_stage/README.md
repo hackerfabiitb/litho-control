@@ -221,6 +221,44 @@ asked for EEPROM.
 
 ## Log
 
+### 2026-10-07 — optical tracking shows backlash, a 6 % scale difference and creep at rest; Y hit a stop — OPEN
+
+**Method.** The UI's optical tracking (camera/tracker.py), with white
+projected on the wafer and the step delay at 3000 µs. The camera view was
+recorded during X +100 / −100 and analysed three independent ways (one
+direct correlation, frame-to-frame chaining, the tracker's reference-frame
+method). They agree within ~3 px (2 µm) at 0.6025 µm/px.
+
+**Measured** (X +100 then −100 steps, from X 1838, Y −3900):
+
+| | camera (u, v) px | µm |
+| --- | --- | --- |
+| X +100 | −440, −27 | 265 along a line 3.5° off the camera's horizontal |
+| X −100 | +408, +42 | 246 |
+| back at the start position | −34, +16 | ~22 off the start |
+| at rest before the first move | 13 px drift | ~8 |
+
+**Interpretation.**
+- **6 % more travel than nominal** (265 vs 250 µm per 100 steps). Either a
+  step is ~2.65 µm, or the real field is ~6 % smaller than the nominal
+  1070 µm (projector/README.md). A move against a projected pattern of known
+  size would tell which.
+- **Backlash ~20 µm** on reversing X, plus a few µm sideways (Y coupling or
+  play).
+- **Creep at rest, ~8 µm**, after a move. The drivers are released between
+  moves (D), so the stage can relax; Hold (E) should stop it, at the cost of
+  the squeal.
+- **The camera's axes are rotated ~3.5°** from the stage's. The tracker
+  learns this per axis.
+- **Y hit a physical stop** during a +400-step move (−3900 → −3500, inside
+  the soft limits −4400..0). So the soft limits don't match Y's real travel,
+  and the Y count may have lost steps. The tracker showed it: after
+  +400 / −400 the optical Y was 585 µm off the stepper.
+
+**Next steps.** Fix Y's limits (`homing.py --set-zero Y …`), re-zero Y, and
+recheck with tracking. Measure the step size against a projected scale. Try
+Hold to see if the creep stops. Keep test moves under 200 steps.
+
 ### 2026-09-26 — homing: X on its switch, Y and Z zeroed by hand — OPEN
 
 **Steps/mm.** Microstepping isn't in the firmware; it's set by jumpers. A
