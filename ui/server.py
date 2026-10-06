@@ -19,11 +19,17 @@ POST /stage/connect          (re)connect automatically — the default
 POST /stage/disconnect       release the COM port, e.g. to flash firmware
 GET  /stream                 deflickered camera feed, MJPEG (full resolution)
 GET  /config                 camera settings and live stats, JSON
-POST /config                 {"exposure_us", "keep_frac", "max_hold", "deflicker"}
-                             (any subset; deflicker false = raw feed)
+POST /config                 {"exposure_us", "keep_frac", "max_hold", "deflicker",
+                             "transform"} (any subset; deflicker false = raw feed;
+                             transform false = the whole sensor, unwarped)
 POST /camera/calibrate       project patterns/calibrate_deflicker.png for 5 s,
                              run the keep rule's cutoff on those frames once and
-                             freeze it (saved in camera/deflicker_calibration.json)
+                             freeze it (saved in camera/deflicker_calibration.json);
+                             valid at the exposure it was made at only
+POST /camera/fit_transform   project white, find the projected image's outline
+                             (camera/fit_transform.py) and from then on show the
+                             camera warped to an upright 16:9 view of just that
+                             field (saved in camera/fit_transform.json)
 GET  /focus_score            Laplacian variance of the latest shown camera frame
 GET  /projector/stream       what the projector displays, captured from its
                              screen, MJPEG — so it also shows anything else
@@ -70,6 +76,7 @@ sys.path.insert(0, os.path.join(ROOT, "projector"))
 sys.path.insert(0, os.path.join(ROOT, "xyz_stage"))
 
 from deflicker import KeepFilter, relative_cutoff  # noqa: E402
+from fit_transform import draw_debug, find_quad, make_transform  # noqa: E402
 from display import (PatternWindow, detached_displays, extend_desktop,  # noqa: E402
                      find_projector, make_pattern)  # (importing display sets DPI awareness)
 from find_arduino import BAUD, find_arduino  # noqa: E402
@@ -81,6 +88,9 @@ PATTERNS = os.path.join(ROOT, "patterns")
 CAL_IMAGE = "calibrate_deflicker.png"
 CAL_SECONDS = 5.0
 CAL_FILE = os.path.join(ROOT, "camera", "deflicker_calibration.json")
+FIT_FILE = os.path.join(ROOT, "camera", "fit_transform.json")
+FIT_DEBUG = os.path.join(ROOT, "camera", "fit_transform_debug.jpg")
+FIT_EXPOSURE_US = 50.0      # white unsaturated (camera/README.md, 2026-10-07)
 
 
 def load_pattern(name):
@@ -291,16 +301,26 @@ class Camera(threading.Thread):
         self.mean = 0.0
         self.calibration = None              # see calibrate(); loaded below
         self.collect = None                  # frame means go here while calibrating
+        self.collect_frames = None           # whole frames, while fitting the transform
+        self.calibration_stale = False
+        self.transform = None                # see fit_transform(); loaded below
+        self.transform_on = True
+        self._warp = None                    # (matrix, size) while the transform is on
         # appended by the grab thread, only read elsewhere
         self.in_times, self.shown_times = deque(maxlen=400), deque(maxlen=400)
         self.stop_flag = threading.Event()
         self._load_calibration()
+        self._load_transform()
 
     # The deflicker's cutoff is keep_frac x "the top of the recent frame
     # means" (camera/deflicker.py). Live, that top follows the projected
     # image, so an all-white image pushes it up. Calibration runs the same
     # computation once, on CAL_SECONDS of a reference image, and freezes the
-    # top. It is a camera brightness, so it scales with the exposure.
+    # top. It only holds at the exposure it was made at: below one projector
+    # period (4.2 ms) the brightest frames are not proportional to exposure
+    # (measured 2026-10-07: the calibration image's top is 19 at 400 us but
+    # 143 at 14 ms, not 400/14000 of it). At any other exposure the live rule
+    # runs and the UI asks for a recalibration.
 
     def _load_calibration(self):
         try:
@@ -312,7 +332,8 @@ class Camera(threading.Thread):
 
     def _apply_calibration(self):
         c = self.calibration
-        self.filter.fixed_top = c["top"] * self.exposure_us / c["exposure_us"]
+        self.calibration_stale = abs(c["exposure_us"] - self.exposure_us) > 0.5
+        self.filter.fixed_top = None if self.calibration_stale else c["top"]
 
     def calibrate(self, projector):
         """Show the reference image, collect frame means for CAL_SECONDS,
@@ -354,6 +375,83 @@ class Camera(threading.Thread):
               f" from {len(means)} frames -> cutoff {self.filter.cutoff:.1f}", flush=True)
         return self.calibration
 
+    def _load_transform(self):
+        try:
+            with open(FIT_FILE, encoding="utf-8") as fh:
+                self.transform = json.load(fh)
+        except (OSError, ValueError):
+            return
+        self._apply_transform()
+
+    def _apply_transform(self):
+        t = self.transform
+        self._warp = None
+        if t and self.transform_on:
+            self._warp = (np.array(t["matrix"], np.float64), tuple(t["size"]))
+
+    def _grab_top(self, exposure_us, seconds=0.8):
+        """Mean of the brightest frames at `exposure_us` (the lit ones)."""
+        self.configure(exposure_us=exposure_us)
+        time.sleep(0.6)                      # applied, and the old frames gone
+        self.collect_frames = []
+        time.sleep(seconds)
+        frames, self.collect_frames = self.collect_frames, None
+        if len(frames) < 5:
+            raise RuntimeError(f"only {len(frames)} frames in {seconds} s")
+        means = np.array([f.mean() for f in frames])
+        top = [f for f, m in zip(frames, means) if m >= np.percentile(means, 85)]
+        return np.mean(np.stack(top).astype(np.float32), axis=0)
+
+    def fit_transform(self, projector):
+        """Project white, find its outline, store the transform to 16:9, then
+        put back the exposure and what the projector was showing."""
+        if not self.connected:
+            raise RuntimeError(f"camera not connected ({self.error})")
+        image = load_pattern("white_4K.jpg")
+        before = (projector.source, projector.image_name, projector.fit, projector.state)
+        exposure = self.exposure_us
+        projector.source, projector.image_name, projector.fit = image, "white_4K.jpg", "native"
+        try:
+            if projector.do("show")["state"] != "image":
+                raise RuntimeError(f"projector display not found ({projector.error})")
+            e = FIT_EXPOSURE_US
+            for _ in range(4):               # keep white unsaturated, but well lit
+                img = self._grab_top(e)
+                p99 = float(np.percentile(img, 99))
+                if p99 > 245 and e > 34:
+                    e = max(34.0, e / 2)
+                elif p99 < 40 and e < 800:
+                    e = e * 2
+                else:
+                    break
+        finally:
+            self.collect_frames = None
+            self.configure(exposure_us=exposure)
+            source, name, fit, state = before
+            projector.source, projector.image_name, projector.fit = source, name, fit
+            if state == "image" and source is not None:
+                projector.do("show")
+            elif state == "blank":
+                projector.do("blank")
+            else:
+                projector.do("close")
+        corners = find_quad(img)
+        matrix, size, src = make_transform(corners)
+        self.transform = {
+            "matrix": matrix.tolist(), "size": list(size),
+            "corners": np.round(src, 1).tolist(), "exposure_us": e,
+            "sensor": [int(img.shape[1]), int(img.shape[0])],
+            "date": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        self.transform_on = True
+        self._apply_transform()
+        with open(FIT_FILE, "w", encoding="utf-8") as fh:
+            json.dump(self.transform, fh, indent=2)
+        cv2.imwrite(FIT_DEBUG, draw_debug(img, src))
+        print(f"[camera] fit transform: corners {self.transform['corners']} -> "
+              f"{size[0]}x{size[1]} (white at {e:g} us)", flush=True)
+        return self.transform
+
     def configure(self, **kw):
         with self.lock:
             self.pending.update({k: v for k, v in kw.items() if v is not None})
@@ -366,13 +464,16 @@ class Camera(threading.Thread):
             _try_set(cam, ["ExposureTime"], self.exposure_us)
             self.filter.reset()              # the brightness scale changed
             if self.calibration:
-                self._apply_calibration()    # scale the frozen top with it
+                self._apply_calibration()    # only valid at its own exposure
         if "keep_frac" in pending:
             self.filter.keep_frac = float(pending["keep_frac"])
         if "max_hold" in pending:
             self.filter.max_hold = float(pending["max_hold"])
         if "deflicker" in pending:
             self.filter.enabled = bool(pending["deflicker"])
+        if "transform" in pending:
+            self.transform_on = bool(pending["transform"])
+            self._apply_transform()
 
     @staticmethod
     def _rate(times, now, span=2.0):
@@ -391,6 +492,10 @@ class Camera(threading.Thread):
             "kept": f.kept, "forced": f.forced, "total": f.total,
             "longest_hold_ms": round(1e3 * f.longest_hold),
             "deflicker": f.enabled, "calibration": self.calibration,
+            "calibration_stale": self.calibration_stale,
+            "transform": None if not self.transform else {
+                "on": self.transform_on, "size": self.transform["size"],
+                "date": self.transform["date"]},
         }
 
     def run(self):
@@ -411,9 +516,15 @@ class Camera(threading.Thread):
                     self.mean = frame_score(frame)[0]
                     if self.collect is not None:
                         self.collect.append(self.mean)
+                    if self.collect_frames is not None and len(self.collect_frames) < 80:
+                        self.collect_frames.append(frame.copy())
                     show, _ = self.filter.decide(self.mean, now)
                     if show:
                         self.shown_times.append(now)
+                        warp = self._warp
+                        if warp is not None:         # just the projected field, 16:9
+                            frame = cv2.warpPerspective(frame, warp[0], warp[1],
+                                                        flags=cv2.INTER_LINEAR)
                         self.last_frame = frame
                         if self.stream.clients:
                             self.stream.put(encode(frame))
@@ -761,7 +872,8 @@ def make_handler(stage, camera, projector, mirror, shutdown):
                     camera.configure(exposure_us=data.get("exposure_us"),
                                      keep_frac=data.get("keep_frac"),
                                      max_hold=data.get("max_hold"),
-                                     deflicker=data.get("deflicker"))
+                                     deflicker=data.get("deflicker"),
+                                     transform=data.get("transform"))
                     time.sleep(0.1)          # let the grab thread pick it up
                     self._json(camera.stats())
                 elif url.path == "/projector/image":
@@ -787,6 +899,12 @@ def make_handler(stage, camera, projector, mirror, shutdown):
                 elif url.path == "/camera/calibrate":
                     try:
                         camera.calibrate(projector)
+                    except RuntimeError as exc:
+                        return self._json({**camera.stats(), "error": str(exc)}, 409)
+                    self._json(camera.stats())
+                elif url.path == "/camera/fit_transform":
+                    try:
+                        camera.fit_transform(projector)
                     except RuntimeError as exc:
                         return self._json({**camera.stats(), "error": str(exc)}, 409)
                     self._json(camera.stats())

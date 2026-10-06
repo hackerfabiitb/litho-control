@@ -282,6 +282,82 @@ leaves the Windows HighGUI backend stretching the image to fill the window.
 
 ## Debugging log
 
+### 2026-10-07 — brightness vs exposure, bloom on white, a ghost image — EXPLAINED (optics open)
+
+**Observed (user):**
+- the calibration image looks fine at both 400 µs and 14 000 µs;
+- a full white image blows out the whole camera unless the exposure is
+  ~50 µs.
+
+**Method.** `camera/linearity_probe.py` with the camera and projector
+directly (the server stopped).
+- **Patterns:** black, white, gray64, gray128, the calibration image, and
+  one 400 px white square on black.
+- **Exposures:** 34 µs to 14 ms, 40 frames each.
+- **Per pattern and exposure:** two brightnesses:
+  - **avg:** the mean over all frames, which is what a long exposure sees;
+  - **top:** the brightest 10 % of frames, which is roughly what the
+    deflickered feed shows.
+
+Data in `projector/captures/20261007-002104_linearity/`.
+
+| pattern | 100 µs avg / top | 400 µs avg / top | 4167 µs avg / top | 14 000 µs avg / top |
+| --- | --- | --- | --- | --- |
+| black (DMD all off) | 0.3 / 1.5 | 2.1 / 12 | 26 / 27 | 87 / 103 |
+| calibration image | 0.5 / 3.4 | 3.1 / 19 | 36 / 37 | 121 / 143 |
+| white | 30 / 154 | 66 / **255** (100 % saturated) | 255 | 255 |
+
+![square on black: ghost and veil](docs/2026-10-07_glare_ghost.jpg)
+
+*Top: black and the calibration image at 4167 µs. Bottom: the white square
+at 4167 µs, and the square minus black on a log scale.*
+
+**Findings.**
+1. **Below one projector period (4.2 ms), deflickered brightness isn't
+   proportional to exposure.** A short exposure catches a slice of the
+   pulsed light. The deflicker shows the brightest slices, which are ~6× the
+   time average (calibration image at 400 µs: top 19, avg 3.1). From 4.2 ms
+   on, every frame holds whole periods: frames are alike (min ≈ max) and
+   brightness grows linearly (black 26 → 52 → 87, calibration 36 → 72 →
+   121). So 400 µs deflickered (≈19) and 14 ms (≈120–140) are both in range,
+   which is why the calibration image looks fine at both. It also showed a
+   bug of mine: the saved deflicker calibration (made at 14 ms) was scaled
+   in proportion to exposure, which put the 400 µs cutoff at 4.5 instead of
+   ~15. Now a calibration only applies at its own exposure (see
+   ui/README.md).
+2. **White is ~45–65× brighter than the calibration image** (top 154 vs 3.4
+   at 100 µs; avg 30 vs 0.5), so it saturates from ~200 µs. Part of that is
+   content: the calibration image is mostly a dark wallpaper. The rest is
+   glare:
+   - **Veil:** a white area raises the *whole* frame by ~10 % of its own
+     brightness. Around the square, the extra light falls from 231 to ~23
+     within 150 px and then stays at ~23 out to 800 px. 80–86 % of the
+     square's light lands outside it. For a full-white image every pixel
+     collects the veil of all the others, which is the bloom.
+   - **Ghost:** an 18 % copy of the image, shifted 439 px up (dx −11). A
+     double reflection, typically the two faces of a plate beamsplitter, or
+     the beamsplitter and a parallel surface such as the sample or a cover
+     glass.
+   - **It's optical, not the projector raising its LED power.** The DMD's
+     stuck-on stripe (content-independent) rose only ×1.22 with the square
+     on (+15 at 4167 µs), no more than the veil adds there (+32); the far
+     floor rose ×2.3–3.2.
+3. **The DMD's "black" is not dark:** 26 at 4167 µs and 87 at 14 ms, about
+   1 % of white.
+4. **Geometry:** the projected image is now axis-aligned and fills most of
+   the sensor (corners about (62, 145)–(1857, 1131) at 1936×1216). On
+   2026-10-03 it was rotated ~30°.
+
+**Next steps.**
+- **Ghost:** a wedged or back-side AR-coated plate, a cube, or a pellicle
+  beamsplitter. Tilting the plate moves the ghost off the field.
+- **Veil:** baffles and black flocking around the beamsplitter and tubes.
+  Check whether the sample (Newton's-ring fringes are visible) or a cover
+  glass scatters.
+- **In software meanwhile:** use short exposures (≤100 µs) on bright
+  content. The veil is roughly "10 % of the mean brightness", so it could be
+  subtracted. Not done.
+
 ### 2026-10-03 — glare / haze over the whole feed after reassembling the litho — OPEN
 
 **Symptom.** After the litho optics were reassembled, the deflickered feed in

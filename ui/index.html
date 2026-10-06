@@ -625,6 +625,10 @@
                 title="Off: show every camera frame, flicker included">Deflicker: on</button>
         <button class="cam-apply-btn" id="calDeflickerBtn" onclick="calibrateDeflicker()"
                 title="Projects patterns/calibrate_deflicker.png for 5 s, sets the cutoff from it and keeps it fixed">Calibrate deflicker</button>
+        <button class="cam-apply-btn" id="fitTransformBtn" onclick="fitTransform()"
+                title="Projects white, finds the projected image's outline, and shows only that field, straightened to 16:9">Fit transform</button>
+        <button class="cam-apply-btn" id="viewBtn" onclick="toggleView()" style="display:none;"
+                title="Fitted: the projected field only, straightened to 16:9. Full: the whole sensor">View: fitted</button>
       </div>
       <span class="cam-err-text" id="camErrText"></span>
     </div>
@@ -1251,10 +1255,13 @@ function onCamImgError() {
 function _camStatsText(c) {
   if (!c.connected) return c.error || 'camera not open';
   const f = (v, w, d = 1) => Number(v).toFixed(d).padStart(w);
-  if (c.deflicker === false) return `${f(c.in_fps, 4)} fps, raw (deflicker off)\nmean ${f(c.mean, 5)}`;
+  const t = c.transform;
+  const view = t && t.on ? `view: fitted ${t.size[0]}×${t.size[1]}` : 'view: full sensor';
+  if (c.deflicker === false) return `${f(c.in_fps, 4)} fps, raw (deflicker off)\nmean ${f(c.mean, 5)}\n${view}`;
+  const rule = c.calibration && !c.calibration_stale ? 'fixed' : 'live';
   return `${f(c.in_fps, 4)} fps in → ${f(c.shown_fps, 4)} shown\n` +
-         `mean ${f(c.mean, 5)} / cutoff ${f(c.cutoff, 5)} ` + (c.calibration ? 'fixed' : 'live') +
-         `\nforced ${f(c.forced, 4, 0)}`;
+         `mean ${f(c.mean, 5)} / cutoff ${f(c.cutoff, 5)} ${rule}` +
+         `\nforced ${f(c.forced, 4, 0)} · ${view}`;
 }
 
 function _camConnect(serverConfig) {
@@ -1287,15 +1294,23 @@ function _camShowConfig(c) {
   else         { setCamStatus('on', c.connected ? 'live' : 'opening camera…'); showCamErr(''); }
   document.getElementById('camPaneInfo').textContent = _camStatsText(c);
   deflickerOn = c.deflicker !== false;
+  viewFitted = !!(c.transform && c.transform.on);
   const btn = document.getElementById('deflickerBtn');
   btn.textContent = 'Deflicker: ' + (deflickerOn ? 'on' : 'off');
   btn.style.borderColor = deflickerOn ? 'var(--accent)' : 'var(--warn)';
   btn.style.color = deflickerOn ? 'var(--accent)' : 'var(--warn)';
   const k = c.calibration;
   const top = document.getElementById('camTopLabel');
-  top.textContent = k ? '× calibrated top' : '× recent top';
-  top.title = k ? `calibrated ${k.date} on ${k.image}: top ${k.top} at ${k.exposure_us} µs`
+  top.textContent = !k ? '× recent top'
+                  : c.calibration_stale ? `× recent top (calibrated at ${k.exposure_us} µs: recalibrate)`
+                  : '× calibrated top';
+  top.style.color = k && c.calibration_stale ? 'var(--warn)' : '';
+  top.title = k ? `calibrated ${k.date} on ${k.image}: top ${k.top} at ${k.exposure_us} µs. ` +
+                  'Valid at that exposure only; at any other the live rule runs.'
                 : 'not calibrated: the top follows the projected image';
+  const t = c.transform, vb = document.getElementById('viewBtn');
+  vb.style.display = t ? '' : 'none';
+  if (t) vb.textContent = 'View: ' + (t.on ? 'fitted' : 'full');
 }
 
 function _camDisconnect(reason) {
@@ -1396,6 +1411,35 @@ async function calibrateDeflicker() {
     btn.textContent = 'Calibrate deflicker';
     _refreshProjStatus();
   }
+}
+
+// Fit transform: the server projects white, finds the projected field's
+// outline and from then on shows only that field, straightened to 16:9.
+async function fitTransform() {
+  const btn = document.getElementById('fitTransformBtn');
+  btn.disabled = true;
+  btn.textContent = 'Fitting…';
+  log('Fit transform: projecting white and finding its outline…', 'sys');
+  try {
+    const r = await fetch(CAM_URL + '/camera/fit_transform',
+                          { method: 'POST', signal: AbortSignal.timeout(30000) });
+    const c = await r.json();
+    if (!r.ok) throw new Error(c.error || ('HTTP ' + r.status));
+    _camShowConfig(c);
+    log(`Fit transform: view is now ${c.transform.size[0]}×${c.transform.size[1]} ` +
+        '(outline drawn in camera/fit_transform_debug.jpg)', 'sys');
+  } catch (e) {
+    log('Fit transform failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Fit transform';
+    _refreshProjStatus();
+  }
+}
+
+let viewFitted = true;
+function toggleView() {
+  _postCamConfig({ transform: !viewFitted });
 }
 
 async function showPattern(name) {

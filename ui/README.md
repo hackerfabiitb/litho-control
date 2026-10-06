@@ -144,8 +144,12 @@ an all-white image the cutoff climbs with it.
 From then on the cutoff is keep × that top, whatever is projected.
 - **Saved** in `camera/deflicker_calibration.json` (git-ignored) and loaded at
   startup.
-- **Exposure changes** scale the top in proportion. Recalibrate after
-  changing the light (LED current, optics).
+- **Only valid at the exposure it was made at.** At any other exposure the
+  live rule runs, and the keep label says
+  `× recent top (calibrated at … µs: recalibrate)`. The top is not
+  proportional to exposure below ~4.2 ms (camera/README.md, 2026-10-07), so
+  scaling it, as the first version did, set wrong cutoffs. Recalibrate after
+  changing the exposure or the light (LED current, optics).
 - **Back to the rolling rule:** delete the json and restart the server.
 
 Measured 2026-10-05, 400 µs: the top was 15.2 from 205 frames, so the cutoff
@@ -155,6 +159,33 @@ was 12.2.
 - **The cost:** about 5 % of the raw frames on white are part-lit (seen: 14,
   31 and 94), above that cutoff, so they get through as an occasional dimmer
   frame. The rolling rule rejected them.
+
+## Fit transform
+
+**Fit transform** (CAMERA panel) shows only the projected field, upright and
+16:9, instead of the whole sensor:
+1. projects `patterns/white_4K.jpg` and drops the exposure to 50 µs, so white
+   doesn't saturate (it adjusts if needed);
+2. finds the field's four edges (`camera/fit_transform.py`, which explains
+   why a plain threshold fails here: the veil, the ghost above the image, and
+   the DMD fault band inside the right edge) and intersects them;
+3. computes the perspective transform from those corners to a 16:9
+   rectangle (as wide as the field, at most 1920 px);
+4. puts the exposure and the projector back.
+
+The camera feed and the focus score then use the warped view. The deflicker
+still judges brightness on the whole sensor, so its calibration stays valid.
+- **View: fitted / full** switches back to the whole sensor and back again.
+- **Saved** in `camera/fit_transform.json`, with the found outline drawn in
+  `camera/fit_transform_debug.jpg` (both git-ignored). Run it again whenever
+  the camera or projector moves.
+- **Orientation:** it keeps the camera's orientation; it doesn't undo a
+  mirror.
+
+![found outline and the fitted view](../camera/docs/2026-10-07_fit_transform.jpg)
+
+*Left: the outline found on the white field. Right: the fitted view of the
+projector's desktop (1776×999).*
 
 ## HTTP API
 
@@ -168,6 +199,7 @@ was 12.2.
 | `GET /stream` | deflickered camera, MJPEG |
 | `GET /projector/stream` | projector screen mirror, MJPEG |
 | `GET /config`, `POST /config` | camera settings and stats (including `deflicker` and `calibration`); POST any of `exposure_us`, `keep_frac`, `max_hold`, `deflicker` (true/false) |
+| `POST /camera/fit_transform` | Fit transform (above); ~2 s, answers with the stats, or 409 if the camera or projector is missing or no outline is found. `POST /config {"transform": false}` shows the whole sensor again |
 | `POST /camera/calibrate` | deflicker calibration (above); takes ~6 s, answers with the stats, or 409 if the camera or projector is missing |
 | `GET /focus_score` | Laplacian variance of the latest shown camera frame |
 | `GET /projector/status` | `state` (`closed` / `blank` / `image`), image name and size, fit |
@@ -218,6 +250,21 @@ Projector calls return once the change is on screen.
 - **Only one server at a time**, because it uses port 8765.
 
 ## Log
+
+### 2026-10-07 — Fit transform; deflicker calibration tied to its exposure
+
+- **Fit transform** and **View: fitted / full** in the CAMERA panel
+  (`POST /camera/fit_transform`, `camera/fit_transform.py`).
+- **Tested on the hardware:**
+  - 2.1 s; white found at 50 µs;
+  - corners (62, 145), (1850, 130), (1857, 1130), (72, 1143), within 0.5 px
+    of the offline test on the probe's white frame;
+  - stream 1776×999 when fitted, and 1936×1216 with View: full;
+  - the exposure (400 µs) and the projector (desktop) were restored.
+- **Deflicker calibration:** it now applies at its own exposure only. The
+  saved one (14 000 µs) shows as stale at 400 µs, where the live rule gave a
+  cutoff of 14.0. Linear scaling had given 4.5, which let part-lit frames
+  through.
 
 ### 2026-10-07 — projector panel holds everything; raw command box and preview labels removed
 
