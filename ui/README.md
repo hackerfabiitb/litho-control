@@ -281,12 +281,20 @@ position and stitches the fields into one image (`ui/scan.py`,
 1. **Setup.** Projects white and picks an unclipped exposure. The stitched
    image replaces the live projector preview while it runs; the projector
    only shows white.
-2. **Calibration** (~10 s).
+2. **Calibration** (~20 s).
    - For X and for Y: approach the start from −40 steps (so backlash doesn't
-     count), take a frame, move +40 steps, take another, go back.
+     count), then take a frame every 30 steps for 90 steps, then go back.
    - The image shift per step, measured by correlation, gives the camera
-     px per step: the 3.5° rotation and the real scale, not the nominal.
-   - The three frames also seed the flat field.
+     px per step: the axes' tilt and the real scale, not the nominal.
+   - **Checked:** the three 30-step moves and their 90-step total must agree
+     within 12 %, and the step must be 0.6–1.5× nominal (2.5 µm ÷
+     0.6025 µm/px ≈ 4.15 px). Otherwise that axis uses the last good
+     calibration (`camera/scan_calibration.json`), and the status says so.
+     A single 40-step measurement over the HACKER FAB bar arrays locked onto
+     a repeat and came out 40 % short.
+   - **Pitch guard:** the pitch never assumes a step shorter than nominal, so
+     an under-measured axis can't leave the fields without overlap.
+   - The frames also seed the flat field.
 3. **Spiral.** A square spiral of fields from the start.
    - **Pitch:** PITCH × the field (default 70 %, so neighbours share ~30 %
      for registration). That is ≈280 steps in X and ≈170 in Y with the
@@ -318,7 +326,36 @@ position and stitches the fields into one image (`ui/scan.py`,
    5. divide by the **flat field**: the per-pixel median of up to 15 tiles
       from different places. That leaves just the static pattern (falloff,
       DMD fault band, dust), so it isn't repeated in every tile.
-5. **Stop** finishes the current field, then saves `scans/<date>/` (git-ignored):
+   6. **Camera-fixed pixels:** what dividing leaves behind (the DMD fault
+      band at x ≈ 1580–1720, whose bars change from frame to frame, and
+      dust) is found from 8 tiles on: pixels whose fine detail is the same
+      in most tiles (`FlatField.usable`). Registration ignores them, because
+      they match perfectly at zero shift. The mosaic takes those pixels from
+      a neighbouring tile.
+5. **Stop** finishes the current field.
+   - **Refines globally** (`stitch.refine_global`). A field placed wrongly
+     live gets corrected here: a repeating pattern can match one period off,
+     and a Y move can be far from its step count.
+     1. **Every pair of grid neighbours** is matched over the whole frame,
+        from zero shift to past where the calibration puts it, at ¼
+        resolution. It is then refined within 40 px at ½ resolution.
+        Y moves can't be trusted to a window: on 2026-10-07, 154 Y steps
+        moved the view anywhere from ~0 to 960 px
+        (xyz_stage/README.md). Whatever all tiles share is subtracted
+        first, and matches under 50 px are ignored: camera-fixed residue
+        peaks at zero.
+     2. **Robust solve:** all positions together by least squares with
+        Cauchy weights whose scale shrinks from 400 to 8 px. The solve
+        settles on the largest set of pairs that agree, rather than
+        averaging false matches in. Weak priors from the steps place
+        tiles without pairs.
+     3. **Every neighbour pair is matched again** within 100 px of the
+        solved positions, which recovers pairs whose whole-frame match was
+        a bar-array alias. Then it solves again. A pair counts as
+        consistent within 10 px.
+     4. It starts from the calibration, not the live refit, which can be
+        far off.
+   - Then saves `scans/<date>/` (git-ignored):
    - `mosaic.png`: full resolution, flat-corrected, feathered seams (half
      resolution above 300 Mpx);
    - `preview.jpg`;
@@ -329,6 +366,15 @@ position and stitches the fields into one image (`ui/scan.py`,
 
    Then it puts back the projector and the exposure. The stage stays at the
    last field.
+
+**Re-stitching a saved scan** with the global refinement writes
+`mosaic_refined.png` beside the original. Next to it, `mosaic_refined.json`
+holds the positions, every pair match with its residual, and the tiles
+placed by the steps only (~20 s for 48 fields):
+
+```powershell
+.\.venv\Scripts\python.exe camera\stitch.py scans\<date>
+```
 
 **Tested offline**
 - **Your recorded X +100 frames:** registration turned a prediction of
@@ -447,6 +493,37 @@ Projector calls return once the change is on screen.
   2026-10-07, with the second one unable to get COM4 or the camera.)
 
 ## Log
+
+### 2026-10-07 — stitching fixed for scan 02-32-17 ("HACKER FAB" twice, holes)
+
+- **Symptom:** the mosaic of the 48-field scan around the text showed
+  "HACKER FAB" two or three times, plus holes. The live refit had Y at
+  6.3 px/step against ~4.
+- **Causes:**
+  - **Camera-fixed features:** the DMD fault band and dust survive the
+    flat field and match perfectly at zero shift. 11 neighbour pairs
+    "matched" at exactly (0, 0), stacking different places on top of each
+    other.
+  - **Y moves vary a lot:** 154 steps moved the view 0–960 px. The last
+    ring (rows ±3) barely moved in Y at all and slid ~190 px in X instead.
+    A search window around the predicted step can't hold that.
+  - **Greedy rejection:** dropping the worst pair one at a time kept a
+    self-consistent but wrong chain. Many pairs that agreed with each
+    other were thrown out, leaving a 60–100 px error on the right half.
+- **Fix** (`camera/stitch.py`):
+  - `FlatField.usable` masks camera-fixed pixels, and `correlate_plain`
+    can limit its search;
+  - `coarse_offset` searches the whole frame;
+  - `_robust_solve` replaces the greedy drop;
+  - the solve re-matches pairs around its own result.
+  - `ui/scan.py` saves with this, starting from the calibration.
+- **Result:**
+  - **02-32-17:** 132 pair matches, 85 consistent within 10 px, all 48
+    tiles linked. "HACKER FAB" appears once, single dust rings, and
+    scratches run continuously across seams. The thin black gaps left are
+    places no tile saw. `mosaic_refined.png` is 9432 × 4666 px.
+  - **02-07-45** (the earlier good scan): 22/22 pairs consistent, max
+    residual 2.9 px.
 
 ### 2026-10-07 — scan fixed: pitch, prediction, per-axis speeds, lost DONE, save on failure
 

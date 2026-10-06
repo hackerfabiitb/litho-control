@@ -43,7 +43,10 @@ import tracker  # noqa: E402
 from optics import FIELD_WIDTH_UM  # noqa: E402
 
 SCANS = os.path.join(ROOT, "scans")
-CAL_STEPS = 40
+CAL_FILE = os.path.join(ROOT, "camera", "scan_calibration.json")   # last good one
+CAL_STEPS = 40                 # backlash pre-load before measuring
+CAL_STEP = 30                  # measured in 3 moves of this size
+CAL_TOL = 0.12                 # the 3 moves and their total must agree this well
 TILE_FRAMES = 5
 MAX_MOSAIC_PX = 300e6          # above this the saved mosaic is made at half resolution
 # Slowest step delay each axis needs to move the full distance, measured
@@ -148,11 +151,39 @@ class Scan:
             out.append(min(hi, max(lo, v)) if lo != hi else v)
         return out
 
+    def _wait_line(self, send, match, timeout):
+        """Send `send` and wait for a firmware line for which match(line) is
+        true; False on timeout."""
+        got = threading.Event()
+
+        def on_line(line):
+            if match(line):
+                got.set()
+        self.stage.listeners.append(on_line)
+        try:
+            self.stage.send(send)
+            return got.wait(timeout)
+        finally:
+            self.stage.listeners.remove(on_line)
+
+    def _set_speed(self, delay):
+        """S <delay>, confirmed by the firmware's SPEED reply (a lost S would
+        leave Y at a speed where it skips steps)."""
+        if delay == self._delay_sent:
+            return
+        for _ in range(3):
+            if self._wait_line(f"S {delay}", lambda l: l == f"SPEED {delay}", 2.0):
+                self._delay_sent = delay
+                return
+        raise RuntimeError(f"the stage didn't confirm the step delay {delay} us")
+
     def _move(self, x, y, z, timeout=None):
-        """Move and wait until it's finished: on DONE, or on a POS line at
-        the target (the firmware sends POS then DONE; either can arrive
-        garbled -- seen 2026-10-07, a lost DONE during 1-step Z moves).
-        If neither comes in time, ask for the position (P) before failing."""
+        """Move and wait until it's finished. Done on DONE, or on a POS line
+        at the target (either can arrive garbled). A command to the Uno can
+        also get lost (seen 2026-10-07: after a 1-step Z move was "not
+        confirmed", P showed the stage hadn't moved), so: if nothing comes,
+        ask with P, and if it isn't there, send the move again -- it's an
+        absolute target, so resending is safe. Up to 3 times."""
         target = self._clamped(x, y, z)
         start = self._pos()
         steps = max(abs(t - c) for t, c in zip(target, start)) if start is not None else 10000
@@ -161,31 +192,31 @@ class Scan:
         for i, a in enumerate("XYZ"):
             if start is not None and target[i] != start[i]:
                 delay = max(delay, MIN_STEP_DELAY_US.get(a, 0))
-        if delay != self._delay_sent:
-            self.stage.send(f"S {delay}")
-            self._delay_sent = delay
-        timeout = timeout or 5.0 + steps * (1.5 * delay * 1e-6 + 1e-3)
-        done = threading.Event()
+        self._set_speed(delay)
+        timeout = timeout or 2.0 + steps * (1.5 * delay * 1e-6 + 1e-3)
 
-        def on_line(line):
+        def at_target(line):
             if line == "DONE":
-                done.set()
-            elif line.startswith("POS "):
+                return True
+            if line.startswith("POS "):
                 try:
-                    if [int(v) for v in line.split()[1:4]] == target:
-                        done.set()
+                    return [int(v) for v in line.split()[1:4]] == target
                 except ValueError:
-                    pass
-        self.stage.listeners.append(on_line)
-        try:
-            self.stage.send(f"A {target[0]} {target[1]} {target[2]}")
-            if not done.wait(timeout):
-                self.stage.send("P")                        # did it get there anyway?
-                if not done.wait(3.0):
-                    raise RuntimeError(f"stage didn't confirm the move to {target} "
-                                       f"(no DONE, last POS {self._pos()})")
-        finally:
-            self.stage.listeners.remove(on_line)
+                    return False
+            return False
+
+        def pos_is_target(line):
+            return at_target(line) and line != "DONE"
+
+        for attempt in range(3):
+            if self._wait_line(f"A {target[0]} {target[1]} {target[2]}", at_target, timeout):
+                break
+            if self._wait_line("P", pos_is_target, 2.0):    # got there, reply lost
+                break
+            print(f"[scan] move to {target} not confirmed (attempt {attempt + 1}); "
+                  f"stage at {self._pos()}, sending it again", flush=True)
+        else:
+            raise RuntimeError(f"stage didn't reach {target} after 3 attempts (at {self._pos()})")
         time.sleep(0.05)
 
     def _frames(self, n, settle):
@@ -282,33 +313,66 @@ class Scan:
             record["exposure_us"] = cam.exposure_us
 
             # calibration: camera px per step for X and Y. Each axis is
-            # approached from the far side first, so the measured move
-            # doesn't include taking up the backlash (~20 um measured).
+            # approached from the far side first (no backlash in the
+            # measurement), then measured in 3 moves of CAL_STEP; the three and
+            # their total must agree, and be plausible against the nominal
+            # step, or the last good calibration is used. (One 40-step
+            # measurement over the HACKER FAB bar arrays locked onto a repeat
+            # and came out 40 % short, 2026-10-07.)
             self._set(phase="calibrating")
-            per_step, cal_frames = [], []
+            um_per_px = FIELD_WIDTH_UM / cam.transform["size"][0]
+            nominal = [1000.0 / self.spmm[a] / um_per_px for a in "XY"]       # ~4.15 px/step
+            per_step, cal_frames, cal_notes = [], [], []
             for i, a in enumerate("XY"):
-                d = CAL_STEPS
-                ahead, behind = [sx, sy, sz], [sx, sy, sz]
-                ahead[i] += d
-                behind[i] -= d
-                if not (self._inside(*ahead, lim) and self._inside(*behind, lim)):
+                d = CAL_STEP
+                far, behind = [sx, sy, sz], [sx, sy, sz]
+                far[i] += 3 * d
+                behind[i] -= CAL_STEPS
+                if not (self._inside(*far, lim) and self._inside(*behind, lim)):
                     d = -d
-                    ahead[i], behind[i] = start[i] + d, start[i] - d
+                    far[i], behind[i] = start[i] + 3 * d, start[i] + CAL_STEPS
                 self._move(*behind)
                 self._move(sx, sy, sz)
-                f0 = self._tile(0.4)
-                self._move(*ahead)
-                f = self._tile(0.4)
-                cal_frames += ([f0] if not cal_frames else []) + [f]   # 3 different places
+                frames = [self._tile(0.4)]
+                for k in (1, 2, 3):
+                    tgt = [sx, sy, sz]
+                    tgt[i] += k * d
+                    self._move(*tgt)
+                    frames.append(self._tile(0.4))
                 self._move(sx, sy, sz)
-                dx, dy, psr = shift_px(f0, f)
-                if psr < tracker.PSR_MIN:
-                    raise RuntimeError(f"calibration: no clear match on {a} (quality {psr:.0f}); "
-                                       "are there features in view and in focus?")
-                per_step.append((dx / d, dy / d))
+                cal_frames += frames if not cal_frames else frames[1:]
+                each = []
+                for k in (1, 2, 3):
+                    dx, dy, q = shift_px(frames[k - 1], frames[k])
+                    if q >= tracker.PSR_MIN:
+                        each.append(np.array([dx, dy]) / d)
+                tdx, tdy, tq = shift_px(frames[0], frames[3])
+                total = np.array([tdx, tdy]) / (3 * d) if tq >= tracker.PSR_MIN else None
+                vec = np.median(np.array(each), axis=0) if each else None
+                ok = (vec is not None and len(each) >= 2 and total is not None
+                      and all(np.hypot(*(e - vec)) <= CAL_TOL * np.hypot(*vec) for e in each)
+                      and np.hypot(*(total - vec)) <= CAL_TOL * np.hypot(*vec)
+                      and 0.6 * nominal[i] <= np.hypot(*vec) <= 1.5 * nominal[i])
+                if ok:
+                    per_step.append(tuple(vec))
+                    cal_notes.append(f"{a}: measured")
+                else:
+                    saved = self._saved_calibration()
+                    if saved is None:
+                        raise RuntimeError(
+                            f"calibration of {a} is inconsistent (moves {[np.round(e, 2).tolist() for e in each]}, "
+                            f"total {None if total is None else np.round(total, 2).tolist()} px/step, "
+                            f"nominal {nominal[i]:.2f}) and there is no earlier one: start on an area "
+                            f"with features that don't repeat")
+                    per_step.append(tuple(saved[:, i]))
+                    cal_notes.append(f"{a}: inconsistent here, using the last good calibration")
             C = np.array(per_step).T                         # columns: camera px per +1 step in X, Y
+            if all(n.endswith("measured") for n in cal_notes):
+                with open(CAL_FILE, "w", encoding="utf-8") as fh:
+                    json.dump({"cam_px_per_step": C.tolist(), "date": stamp}, fh, indent=2)
             for f in cal_frames:
                 flat.add(f)
+            f0 = cal_frames[0]
             h, w = f0.shape
             pitch = []
             for i in range(2):                               # steps per field along X and Y
@@ -317,13 +381,17 @@ class Scan:
                 # 1 - D|v_y|/h, so the pitch is set by the tighter one. (The
                 # first version measured the field "along" a tilted axis and
                 # left ~5 % overlap in Y.)
-                vx, vy = abs(C[0, i]), abs(C[1, i])
+                # Guard: never assume a step is shorter than nominal, so an
+                # under-measured axis can't leave the fields without overlap.
+                v = C[:, i] * max(1.0, nominal[i] / max(np.hypot(*C[:, i]), 1e-9))
+                vx, vy = abs(v[0]), abs(v[1])
                 d = self.params["pitch"] * min(w / max(vx, 1e-9), h / max(vy, 1e-9))
                 pitch.append(max(1, int(round(d))))
-            record["calibration"] = {"cam_px_per_step": C.tolist(), "pitch_steps": pitch,
+            record["calibration"] = {"cam_px_per_step": C.tolist(), "pitch_steps": pitch, "notes": cal_notes,
                                      "um_per_px": FIELD_WIDTH_UM / cam.transform["size"][0]}
             um_per_step = [np.hypot(*C[:, i]) * FIELD_WIDTH_UM / cam.transform["size"][0] for i in range(2)]
-            self._set(calibration={"pitch_steps": pitch, "um_per_step": [round(u, 3) for u in um_per_step]})
+            self._set(calibration={"pitch_steps": pitch, "um_per_step": [round(u, 3) for u in um_per_step],
+                                   "notes": cal_notes})
 
             # mosaic px per step: the view moves opposite to the image. Refitted
             # from the registered tiles as they come (the 40-step calibration
@@ -406,13 +474,34 @@ class Scan:
             cam.configure(exposure_us=exposure_before)
             self._set(active=False)
 
+    def _saved_calibration(self):
+        try:
+            with open(CAL_FILE, encoding="utf-8") as fh:
+                return np.array(json.load(fh)["cam_px_per_step"], float)
+        except (OSError, ValueError, KeyError):
+            return None
+
     def _save(self, mosaic, out_dir, record):
-        """mosaic.png (+ preview.jpg) from the tiles so far."""
+        """mosaic.png (+ preview.jpg) from the tiles so far, after a global
+        refinement of the tile positions (stitch.refine_global)."""
         if mosaic.tiles:
-            self._set(phase="saving")
+            self._set(phase="saving: refining positions")
             final = stitch.FlatField()
             for t in mosaic.tiles[-final.MAX:]:
                 final.add(t)
+            cal = record.get("calibration", {}).get("cam_px_per_step")
+            if len(mosaic.tiles) > 1 and (cal is not None or "px_per_step" in record):
+                # start from the calibration: the live refit can be far off
+                M = -np.array(cal, float) if cal is not None else record["px_per_step"]
+                offsets, info = stitch.refine_global(
+                    mosaic.tiles, [t["grid"] for t in record["tiles"]],
+                    [t["steps"][:2] for t in record["tiles"]], M, final,
+                    log=lambda m: print("[scan] " + m, flush=True))
+                mosaic.offsets = offsets
+                record["global_refinement"] = info
+                for t, o in zip(record["tiles"], offsets):
+                    t["refined_px"] = [round(o[0], 1), round(o[1], 1)]
+            self._set(phase="saving")
             x0, y0, x1, y1 = mosaic.bounds()
             scale = 1.0 if (x1 - x0) * (y1 - y0) <= MAX_MOSAIC_PX else 0.5
             img, _ = mosaic.render(scale, final)

@@ -221,6 +221,52 @@ asked for EEPROM.
 
 ## Log
 
+### 2026-10-07 — during a scan, 154-step Y moves at 4 ms/step travel 0–960 px — OPEN
+
+**Symptom.** The 48-field scan around the HACKER FAB text
+(`scans/2026-10-07_02-32-17`) stitched the text two or three times.
+
+**Method.** Offline, from the saved tiles. Every pair of neighbouring
+fields was registered over the whole frame, and the positions were solved
+robustly (`camera/stitch.py`, `refine_global`; see ui/README.md, Scan). The
+shift for each move comes from the solved positions: 30 Y moves and 25 X
+moves, each confirmed by its pair match within 10 px. Y moves ran at
+4000 µs/step (the scan's minimum for Y), X moves at 800 µs.
+
+**Measured** (camera px per step along the move; nominal ≈ 4.15):
+
+| | moves | min | median | max |
+| --- | --- | --- | --- | --- |
+| X, 301 steps | 25 | 3.81 | 4.04 | 5.00 |
+| Y, 154 steps | 30 | 1.12 | 3.02 | 6.73 |
+
+- **Single Y moves** of 154 steps shifted the view between ~0 and 960 px.
+- **The last ring barely moved in Y.** Rows −2 → −3 (Y −2508 → −2662)
+  moved Y by −6…+78 px and slid X by 170–200 px instead
+  ([tiles 20 and 43](docs/2026-10-07_y_move_not_taken.jpg): the same two
+  rings). Row 2 → 3 moves went the other way: 931–964 px.
+- **Over a whole column Y comes out about right.** Column +3 (tiles 25 → 30,
+  770 steps) totals 3113 px, 4.04 px/step, though its single moves range
+  424–749 px.
+
+**Interpretation.**
+- **At 4 ms/step Y no longer loses steps on balance, but it lags and
+  catches up**, like stick-slip: a short move is made up by a long one
+  later. Which field a picture belongs to is therefore uncertain by up to
+  a field height.
+- **The sideways X slide** on the moves that didn't happen in Y points to
+  the Y carriage binding and twisting, rather than to the driver.
+- **This is not the same as the step loss below 4 ms**, where the total
+  itself comes up short.
+
+**Next steps.**
+- **Mechanics first:** check the Y axis for binding, especially near Y
+  −2600 and −1750 (the outer rings). Check the coupler, the rail
+  lubrication, and that the lead-screw nut isn't pre-loaded sideways.
+- **Then Vref**, then acceleration in the firmware.
+- **Meanwhile** the stitcher no longer trusts the steps (whole-frame pair
+  search).
+
 ### 2026-10-07 — Y loses ~36 % of its steps faster than 4 ms/step; nothing moves at 20 µs — OPEN
 
 **Method.** Imaged moves with the camera (white projected, fitted view).

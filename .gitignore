@@ -7,3 +7,4 @@ camera/fit_transform.json
 camera/fit_transform_debug.jpg
 xyz_stage/focus.json
 scans/
+camera/scan_calibration.json
