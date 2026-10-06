@@ -5,3 +5,4 @@ captures
 camera/deflicker_calibration.json
 camera/fit_transform.json
 camera/fit_transform_debug.jpg
+xyz_stage/focus.json

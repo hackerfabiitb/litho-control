@@ -425,6 +425,11 @@
     border-top: 1px solid var(--border);
   }
   .af-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .af-live { font-size: 15px; color: var(--dim); margin-top: 6px; white-space: pre; }
+  .af-live span { color: var(--text); }
+  .af-result { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--accent2);
+               border-radius: 3px; font-size: 15px; color: var(--text); }
+  .af-result-btns { display: flex; gap: 8px; margin-top: 6px; }
   .af-row label { width: 90px; font-size: 14px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
   .af-progress-wrap {
     height: 3px; background: var(--bg3); border-radius: 2px;
@@ -552,8 +557,16 @@
           <div class="af-progress-bar" id="afProgressBar"></div>
         </div>
         <div class="af-status" id="afStatus"></div>
+        <div class="af-live" title="Sharpness of the camera view: variance of its Laplacian (edge strength). Autofocus moves Z to where this peaks.">sharpness <span id="afLive">—</span></div>
         <button class="go-btn" style="margin-top:6px;" id="afRunBtn" onclick="runAutofocus()">Run Autofocus</button>
         <button class="af-cancel-btn" id="afCancelBtn" onclick="cancelAutofocus()">Cancel</button>
+        <div class="af-result" id="afResult" style="display:none;">
+          <div id="afResultText"></div>
+          <div class="af-result-btns">
+            <button class="cam-apply-btn" onclick="saveAfResult()">Save as focus</button>
+            <button class="cam-apply-btn" onclick="discardAfResult()">Discard</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -806,15 +819,10 @@ function parseLine(line) {
   if (line === 'CALIBRATED')   { isCalibrated = true;  return; }
   if (line === 'UNCALIBRATED') { isCalibrated = false; return; }
 
-  // FOCUS n  or  FOCUS UNSET
+  // FOCUS n / UNSET from the Uno: the focus now lives in the server's file
+  // (GET /focus); the server adopts the Uno's value once if it has none.
   if (line.startsWith('FOCUS ')) {
-    const val = line.substring(6).trim();
-    if (val === 'UNSET') {
-      focusSet = false; focusZ = null;
-    } else {
-      focusSet = true; focusZ = parseInt(val);
-    }
-    updateFocusUI();
+    loadFocus();
     return;
   }
 
@@ -949,14 +957,38 @@ function updateLimitsUI() {
 }
 
 // ── Focus ──────────────────────────────────────────────────
+// The focus Z is saved on disk by the server (xyz_stage/focus.json) and
+// loaded when the page opens; nothing moves until "Go to focus".
+async function loadFocus() {
+  try {
+    const f = await (await fetch('/focus', { signal: AbortSignal.timeout(2000) })).json();
+    focusSet = f.z !== null && f.z !== undefined;
+    focusZ = focusSet ? f.z : null;
+    document.getElementById('focusPosLabel').title =
+      focusSet ? `saved ${f.date} (${f.source})` : 'no focus saved yet';
+  } catch (_) { /* server down */ }
+  updateFocusUI();
+}
+
+async function saveFocus(z, source) {
+  try {
+    const r = await fetch('/focus', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ z, source }), signal: AbortSignal.timeout(3000) });
+    if (!r.ok) throw new Error((await r.json()).error || r.status);
+    log(`Focus saved: Z = ${z} (${source})`, 'sys');
+  } catch (e) { log('Saving the focus failed: ' + e.message, 'err'); }
+  loadFocus();
+}
+
 function setFocus() {
-  if (!connected) return;
-  send('FOCUS SET');
+  if (!connected) { log('Stage not connected', 'err'); return; }
+  saveFocus(pos.Z, 'Set focus here');
 }
 
 function goFocus() {
   if (!connected || !focusSet) return;
-  send('FOCUS GO');
+  send(`A ${pos.X} ${pos.Y} ${focusZ}`);    // Z only: X and Y stay where they are
 }
 
 function updateFocusUI() {
@@ -1158,6 +1190,42 @@ async function getFocusScore() {
   } catch(_) { return 0; }
 }
 
+// Live sharpness, twice a second (one Laplacian of the latest frame: cheap).
+async function _updateLiveSharpness() {
+  if (!cameraActive) { document.getElementById('afLive').textContent = '—'; return; }
+  const v = await getFocusScore();
+  document.getElementById('afLive').textContent = v.toFixed(1).padStart(8);
+}
+
+let afBest = null;           // { z, score } from the last finished sweep
+let afExposureBefore = null; // the exposure to restore after a sweep
+
+function saveAfResult() {
+  if (afBest) saveFocus(afBest.z, `autofocus, sharpness ${afBest.score.toFixed(1)}`);
+  discardAfResult();
+}
+
+function discardAfResult() {
+  afBest = null;
+  document.getElementById('afResult').style.display = 'none';
+}
+
+function _showAfResult() {
+  document.getElementById('afResultText').textContent =
+    `Best focus: Z = ${afBest.z} (sharpness ${afBest.score.toFixed(1)}). ` +
+    'The stage is there now. Save it as the focus for "Go to focus"?';
+  document.getElementById('afResult').style.display = '';
+}
+
+async function _projector(path, body) {
+  const r = await fetch(path, { method: 'POST', body: body && JSON.stringify(body),
+                                headers: { 'Content-Type': 'application/json' },
+                                signal: AbortSignal.timeout(10000) });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+  _setProjStatus(data);
+}
+
 function setAfUI(running, done, total, statusText) {
   document.getElementById('afRunBtn').disabled = running;
   document.getElementById('afCancelBtn').style.display = running ? '' : 'none';
@@ -1194,12 +1262,28 @@ async function runAutofocus() {
   if (zSteps.length === 0) { log('Autofocus: no valid Z positions in range', 'err'); return; }
 
   afRunning = true; afCancelFlag = false;
+  discardAfResult();
   setAfUI(true, 0, zSteps.length, `0 / ${zSteps.length}`);
-  log(`Autofocus: sweeping ${zSteps.length} positions ±${range} steps, step=${stepSz}`, 'sys');
+  log(`Autofocus: sweeping ${zSteps.length} positions ±${range} steps, step=${stepSz}, ` +
+      'on a 32 px checkerboard', 'sys');
 
   let bestZ = pos.Z, bestScore = -Infinity;
 
   try {
+    // Sharp edges everywhere to focus on; what was showing comes back after.
+    await _projector('/projector/remember');
+    await _projector('/projector/pattern', { checker: 32 });
+    // At the usual 400 us the checkerboard clips and its edges vanish in the
+    // veil, so pick an unclipped exposure for the sweep; yours comes back after.
+    afExposureBefore = +document.getElementById('camExposure').value;
+    const ae = await fetch(CAM_URL + '/camera/auto_exposure',
+                           { method: 'POST', signal: AbortSignal.timeout(20000) });
+    const aed = await ae.json();
+    if (!ae.ok) throw new Error(aed.error || ('auto exposure: HTTP ' + ae.status));
+    _camShowConfig(aed);
+    document.getElementById('camExposure').value = aed.exposure_us;
+    log(`Autofocus: exposure ${aed.exposure_us} µs for the sweep (was ${afExposureBefore} µs)`, 'sys');
+    await _sleep(settle);
     for (let i = 0; i < zSteps.length; i++) {
       if (afCancelFlag) { log('Autofocus cancelled.', 'sys'); break; }
       const targetZ = zSteps[i];
@@ -1217,10 +1301,19 @@ async function runAutofocus() {
       const done = waitForDone(15000);
       await send(`A ${pos.X} ${pos.Y} ${bestZ}`);
       await done;
+      afBest = { z: bestZ, score: bestScore };
+      _showAfResult();
     }
   } catch(e) {
     log('Autofocus error: ' + e.message, 'err');
   } finally {
+    try { await _projector('/projector/restore'); }
+    catch (e) { log('Projector: ' + e.message, 'err'); }
+    if (afExposureBefore) {
+      document.getElementById('camExposure').value = afExposureBefore;
+      await _postCamConfig({ exposure_us: afExposureBefore });
+      afExposureBefore = null;
+    }
     afRunning = false;
     setAfUI(false);
   }
@@ -1504,6 +1597,8 @@ startStageEvents();
 updateLimitsUI();
 updateFocusUI();
 _renderFitButtons();
+loadFocus();
+setInterval(_updateLiveSharpness, 500);
 
 // Auto-try camera server on load and keep polling
 camPingTimer = setInterval(_pingCamServer, 1000);

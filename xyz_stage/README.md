@@ -62,6 +62,15 @@ pick. Only one program can hold COM4 at a time. Before running
 - **Motor toggle:** "Motors released when idle (quiet)" by default; see
   [Driver power](#driver-power).
 
+## Focus position
+
+The Z focus position is kept by the UI server in `xyz_stage/focus.json` (git-
+ignored), set from the UI ("Set focus here", or an accepted autofocus result)
+and loaded at startup without moving the stage. The firmware's own
+`FOCUS SET / GO / GET` still work but the UI no longer uses them; the value the
+Uno had stored was adopted into the file once. See
+[ui/README.md](../ui/README.md#z-focus-and-autofocus).
+
 ## Homing
 
 ```powershell

@@ -73,6 +73,9 @@
 - An axis with `"pin": null` in `homing.json` (Y and Z for now) was zeroed by hand
   (`homing.py --set-zero`). It's never seeked; its position relies on the
   firmware's EEPROM and on the user not moving the stage between runs.
+- The Z focus position lives in `xyz_stage/focus.json` (server-owned; `GET` /
+  `POST /focus`), not in the Uno's EEPROM `FOCUS` value, which the UI ignores
+  after adopting it once.
 - Only `SEEK` (homing) stops at switches. It aborts on any byte received, so
   send nothing to the stage while homing runs. A seek towards a missing or
   detached switch runs until its step limit and stalls at the end stop.

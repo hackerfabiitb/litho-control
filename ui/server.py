@@ -26,11 +26,18 @@ POST /camera/calibrate       project patterns/calibrate_deflicker.png for 5 s,
                              run the keep rule's cutoff on those frames once and
                              freeze it (saved in camera/deflicker_calibration.json);
                              valid at the exposure it was made at only
+POST /camera/auto_exposure   set the exposure so the brightest frames of what is
+                             projected now are bright but not clipped (p99 of the
+                             lit frames in 120..235); answers {"exposure_us", "p99"}
 POST /camera/fit_transform   project white, find the projected image's outline
                              (camera/fit_transform.py) and from then on show the
                              camera warped to an upright 16:9 view of just that
                              field (saved in camera/fit_transform.json)
 GET  /focus_score            Laplacian variance of the latest shown camera frame
+                             (sharpness: what autofocus maximises)
+GET  /focus                  the saved focus Z: {"z", "source", "date"} (z null if none)
+POST /focus                  {"z": 1234, "source": "autofocus"}: save it
+                             (xyz_stage/focus.json; loaded at startup, nothing moves)
 GET  /projector/stream       what the projector displays, captured from its
                              screen, MJPEG — so it also shows anything else
                              that ends up on the projector, and the mouse
@@ -41,6 +48,9 @@ POST /projector/image?fit=native|contain|cover|stretch&name=...
                              projector at its native resolution
 POST /projector/fit          {"fit": ...} re-fit the current image
 POST /projector/blank        show black (window stays up)
+POST /projector/remember     note what the projector shows (e.g. before autofocus
+                             puts up its checkerboard) ...
+POST /projector/restore      ... and put that back
 POST /projector/pattern      {"name": "white_4K.jpg"}: show an image from patterns/
                              {"checker": 100}: a black/white checkerboard with
                              100 px squares at the projector's resolution
@@ -89,6 +99,28 @@ CAL_IMAGE = "calibrate_deflicker.png"
 CAL_SECONDS = 5.0
 CAL_FILE = os.path.join(ROOT, "camera", "deflicker_calibration.json")
 FIT_FILE = os.path.join(ROOT, "camera", "fit_transform.json")
+FOCUS_FILE = os.path.join(ROOT, "xyz_stage", "focus.json")
+
+
+# The focus Z lives on disk, owned by the server: "Set focus here" and an
+# accepted autofocus result save it; it is loaded at startup without moving
+# anything; "Go to focus" is a plain move to it. (The Uno's own FOCUS SET
+# can only store the current Z; its stored value is adopted once, when no
+# file exists yet.)
+def load_focus():
+    try:
+        with open(FOCUS_FILE, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {"z": None, "source": None, "date": None}
+
+
+def save_focus(z, source):
+    focus = {"z": int(z), "source": str(source), "date": time.strftime("%Y-%m-%d %H:%M:%S")}
+    with open(FOCUS_FILE, "w", encoding="utf-8") as fh:
+        json.dump(focus, fh, indent=2)
+    print(f"[stage] focus saved: Z = {focus['z']} ({focus['source']})", flush=True)
+    return focus
 FIT_DEBUG = os.path.join(ROOT, "camera", "fit_transform_debug.jpg")
 FIT_EXPOSURE_US = 50.0      # white unsaturated (camera/README.md, 2026-10-07)
 
@@ -257,6 +289,9 @@ class Stage(threading.Thread):
                         mode = {"ENABLED": "hold", "DISABLED": "release",
                                 "READY": "release"}.get(line)
                         self._remember(line)
+                        if (line.startswith("FOCUS ") and line[6:].lstrip("-").isdigit()
+                                and load_focus()["z"] is None):
+                            save_focus(int(line[6:]), "adopted from the Uno (FOCUS SET)")
                         self.emit("line", line)
                         if line == "READY":
                             # The first line after a reset often arrives with
@@ -341,7 +376,7 @@ class Camera(threading.Thread):
         if not self.connected:
             raise RuntimeError(f"camera not connected ({self.error})")
         image = load_pattern(CAL_IMAGE)
-        before = (projector.source, projector.image_name, projector.fit, projector.state)
+        projector.remember()
         projector.source, projector.image_name, projector.fit = image, CAL_IMAGE, "native"
         try:
             if projector.do("show")["state"] != "image":
@@ -352,14 +387,7 @@ class Camera(threading.Thread):
             means, self.collect = self.collect, None
         finally:
             self.collect = None
-            source, name, fit, state = before
-            projector.source, projector.image_name, projector.fit = source, name, fit
-            if state == "image" and source is not None:
-                projector.do("show")
-            elif state == "blank":
-                projector.do("blank")
-            else:
-                projector.do("close")
+            projector.restore()
         if len(means) < 20:
             raise RuntimeError(f"only {len(means)} frames in {CAL_SECONDS:.0f} s")
         top = relative_cutoff(means, 1.0)    # the live rule's top, run once
@@ -402,13 +430,38 @@ class Camera(threading.Thread):
         top = [f for f, m in zip(frames, means) if m >= np.percentile(means, 85)]
         return np.mean(np.stack(top).astype(np.float32), axis=0)
 
+    def auto_exposure(self, lo=120.0, hi=235.0, start=None):
+        """Find an exposure where the lit frames of the current projection are
+        bright but not clipped, set it, and return (exposure_us, p99).
+        Autofocus needs this: at 400 us a checkerboard saturates (veil +
+        clipping, camera/README.md 2026-10-07) and its edges vanish."""
+        if not self.connected:
+            raise RuntimeError(f"camera not connected ({self.error})")
+        e = float(start or self.exposure_us)
+        p99 = None
+        for _ in range(7):
+            img = self._grab_top(e, seconds=0.5)
+            p99 = float(np.percentile(img, 99))
+            if p99 >= 250 and e > 34:                       # clipped: no idea by how much
+                e = max(34.0, e * 0.4)
+            elif p99 > hi and e > 34:
+                e = max(34.0, e * hi * 0.9 / p99)
+            elif p99 < lo and e < 5000:
+                e = min(5000.0, e * min(4.0, (lo + hi) / 2 / max(p99, 1.0)))
+            else:
+                break
+        e = round(e)
+        self.configure(exposure_us=e)
+        print(f"[camera] auto exposure: {e} us (p99 of lit frames {p99:.0f})", flush=True)
+        return e, p99
+
     def fit_transform(self, projector):
         """Project white, find its outline, store the transform to 16:9, then
         put back the exposure and what the projector was showing."""
         if not self.connected:
             raise RuntimeError(f"camera not connected ({self.error})")
         image = load_pattern("white_4K.jpg")
-        before = (projector.source, projector.image_name, projector.fit, projector.state)
+        projector.remember()
         exposure = self.exposure_us
         projector.source, projector.image_name, projector.fit = image, "white_4K.jpg", "native"
         try:
@@ -427,14 +480,7 @@ class Camera(threading.Thread):
         finally:
             self.collect_frames = None
             self.configure(exposure_us=exposure)
-            source, name, fit, state = before
-            projector.source, projector.image_name, projector.fit = source, name, fit
-            if state == "image" and source is not None:
-                projector.do("show")
-            elif state == "blank":
-                projector.do("blank")
-            else:
-                projector.do("close")
+            projector.restore()
         corners = find_quad(img)
         matrix, size, src = make_transform(corners)
         self.transform = {
@@ -593,6 +639,7 @@ class Projector(threading.Thread):
         super().__init__(daemon=True)
         self.monitor_name = monitor_name     # --monitor, else the one non-primary
         self.auto_extend = auto_extend
+        self._saved = None                   # see remember() / restore()
         self.monitor = None
         self.error = None
         self._found_at = 0.0
@@ -623,6 +670,19 @@ class Projector(threading.Thread):
             m = self.monitor
             print(f"projector: {m.name} {m.width}x{m.height}", flush=True)
         return self.monitor is not None
+
+    def remember(self):
+        """Note what is showing, to put it back with restore()."""
+        self._saved = (self.source, self.image_name, self.fit, self.state)
+
+    def restore(self):
+        saved, self._saved = getattr(self, "_saved", None), None
+        if saved is None:
+            return self.status()
+        self.source, self.image_name, self.fit, state = saved
+        if state == "image" and self.source is not None:
+            return self.do("show")
+        return self.do("blank" if state == "blank" else "close")
 
     def status(self):
         m = self.monitor
@@ -841,6 +901,8 @@ def make_handler(stage, camera, projector, mirror, shutdown):
                 self._json(camera.stats())
             elif path == "/projector/status":
                 self._json(projector.status())
+            elif path == "/focus":
+                self._json(load_focus())
             elif path == "/focus_score":
                 f = camera.last_frame
                 score = 0.0 if f is None else float(cv2.Laplacian(f, cv2.CV_64F).var())
@@ -902,6 +964,13 @@ def make_handler(stage, camera, projector, mirror, shutdown):
                     except RuntimeError as exc:
                         return self._json({**camera.stats(), "error": str(exc)}, 409)
                     self._json(camera.stats())
+                elif url.path == "/camera/auto_exposure":
+                    try:
+                        e, p99 = camera.auto_exposure()
+                    except RuntimeError as exc:
+                        return self._json({**camera.stats(), "error": str(exc)}, 409)
+                    time.sleep(0.3)                  # applied before the stats
+                    self._json({**camera.stats(), "exposure_us": e, "p99": round(p99, 1)})
                 elif url.path == "/camera/fit_transform":
                     try:
                         camera.fit_transform(projector)
@@ -926,6 +995,16 @@ def make_handler(stage, camera, projector, mirror, shutdown):
                         projector.source = load_pattern(name)
                         projector.image_name = os.path.basename(name)
                     self._projector_reply(projector.do("show"))
+                elif url.path == "/focus":
+                    data = json.loads(self._body() or b"{}")
+                    if not isinstance(data.get("z"), (int, float)):
+                        return self._json({"error": "need {\"z\": number}"}, 400)
+                    self._json(save_focus(data["z"], data.get("source", "UI")))
+                elif url.path == "/projector/remember":
+                    projector.remember()
+                    self._json(projector.status())
+                elif url.path == "/projector/restore":
+                    self._projector_reply(projector.restore())
                 elif url.path == "/shutdown":
                     self._json({"ok": True})
                     shutdown()

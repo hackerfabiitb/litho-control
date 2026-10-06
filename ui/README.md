@@ -160,6 +160,37 @@ was 12.2.
   31 and 94), above that cutoff, so they get through as an occasional dimmer
   frame. The rolling rule rejected them.
 
+## Z focus and autofocus
+
+**The focus Z** is saved on disk by the server, in `xyz_stage/focus.json`
+(git-ignored), and loaded when the server starts. Nothing moves on load.
+- **Set focus here** saves the current Z.
+- **Go to focus** moves Z there; X and Y stay.
+- **On first start** without a file, the value the Uno stored with its old
+  `FOCUS SET` is adopted (seen: −4237). After that the Uno's own focus value
+  is ignored: its firmware can only store "the current Z", and the server
+  needs to save any Z.
+
+**Autofocus** maximises sharpness:
+1. puts up a **32 px checkerboard** (sharp edges everywhere), and notes what
+   the projector was showing;
+2. **auto exposure** (`POST /camera/auto_exposure`) picks an exposure where
+   the checkerboard's lit frames aren't clipped. At the usual 400 µs the
+   checkerboard saturates (mean 247, 53 % clipped), and with the veil its
+   edges vanish: sharpness read ~1 at any Z. At the 160 µs chosen it read
+   11–14;
+3. sweeps Z over current ± RANGE in STEP increments. After each move it
+   waits SETTLE ms and reads the **sharpness**: the variance of the Laplacian
+   of the latest camera frame (fitted view if Fit transform is on), i.e. the
+   strength of fine edges;
+4. moves to the sharpest Z, then puts back the projector and the exposure;
+5. shows **"Best focus: Z = … (sharpness …)"** under the button with
+   **Save as focus** / **Discard**.
+
+The **live sharpness** above the button updates twice a second. One reading
+takes ~11 ms, so it runs all the time, not only during a sweep. Its absolute
+value depends on the scene and exposure; only the peak along Z matters.
+
 ## Fit transform
 
 **Fit transform** (CAMERA panel) shows only the projected field, upright and
@@ -201,7 +232,10 @@ projector's desktop (1776×999).*
 | `GET /config`, `POST /config` | camera settings and stats (including `deflicker` and `calibration`); POST any of `exposure_us`, `keep_frac`, `max_hold`, `deflicker` (true/false) |
 | `POST /camera/fit_transform` | Fit transform (above); ~2 s, answers with the stats, or 409 if the camera or projector is missing or no outline is found. `POST /config {"transform": false}` shows the whole sensor again |
 | `POST /camera/calibrate` | deflicker calibration (above); takes ~6 s, answers with the stats, or 409 if the camera or projector is missing |
-| `GET /focus_score` | Laplacian variance of the latest shown camera frame |
+| `GET /focus_score` | Laplacian variance of the latest shown camera frame (sharpness) |
+| `GET /focus`, `POST /focus` | the saved focus `{"z", "source", "date"}`; POST `{"z": …, "source": …}` saves it (`xyz_stage/focus.json`) |
+| `POST /camera/auto_exposure` | set the exposure so the lit frames of the current projection are bright but unclipped (p99 120–235); answers with the stats plus `exposure_us`, `p99` |
+| `POST /projector/remember`, `POST /projector/restore` | note what the projector shows, and put it back (used around autofocus, calibration and Fit transform) |
 | `GET /projector/status` | `state` (`closed` / `blank` / `image`), image name and size, fit |
 | `POST /projector/image?fit=native&name=x.png` | body = image file |
 | `POST /projector/fit` | `{"fit": "native" / "contain" / "cover" / "stretch"}` |
@@ -250,6 +284,27 @@ Projector calls return once the change is on screen.
 - **Only one server at a time**, because it uses port 8765.
 
 ## Log
+
+### 2026-10-07 — autofocus: live sharpness, checkerboard, auto exposure, save prompt; focus saved on disk
+
+- **Live sharpness** above Run Autofocus.
+- **During autofocus:** the 32 px checkerboard and auto exposure. Afterwards,
+  the found Z with **Save as focus** / **Discard**, and the projector and
+  exposure restored.
+- **The focus Z** is in `xyz_stage/focus.json`, loaded at startup with no
+  motion. The Uno's stored value (−4237) was adopted once.
+- **Projector:** `remember` / `restore` endpoints. Calibrate and Fit
+  transform now use them too.
+- **Tested against the hardware, without moving the stage:**
+  - the focus survived a server restart, with the position unchanged;
+  - a sharpness reading takes 11 ms;
+  - auto exposure took 2.6 s and chose 160 µs, raising checkerboard
+    sharpness from ~1 to 11–14;
+  - remember → checker → restore put the desktop back;
+  - Selenium: live sharpness updates, the saved focus shows, and Set focus
+    here saves.
+
+  The sweep itself moves Z, so it wasn't run.
 
 ### 2026-10-07 — Fit transform; deflicker calibration tied to its exposure
 
