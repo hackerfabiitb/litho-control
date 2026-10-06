@@ -191,6 +191,71 @@ The **live sharpness** above the button updates twice a second. One reading
 takes ~11 ms, so it runs all the time, not only during a sweep. Its absolute
 value depends on the scene and exposure; only the peak along Z matters.
 
+## Optical tracking
+
+**Optical tracking** (STAGE panel) measures how far the wafer has really
+moved, from the camera, next to what the motor steps say.
+
+**Start** does three things:
+1. projects white and picks an unclipped exposure (89 µs here);
+2. starts `camera/tracker.py` on the fitted view;
+3. zeroes both readings.
+
+It needs **Fit transform** first: the micron scale is the nominal
+1070 µm field ÷ the fitted view's width (0.6025 µm/px; see
+projector/README.md "DMD and exposure field").
+
+| row | meaning |
+| --- | --- |
+| stepper | the firmware's position since Start / Zero, in µm (`steps_per_mm` from `xyz_stage/homing.json`, 400) |
+| optical | the wafer's motion measured by the camera, in stage X / Y |
+| diff | optical − stepper: the sample moved on its own, or a motor slipped or lost steps |
+
+- **Axes:** the camera's axes aren't the stage's. After Start, move **X once
+  and Y once** (≥ 20 steps, one axis at a time); until then "optical" shows
+  "—" and the note gives the camera's u/v.
+  - From each settled single-axis move (0.7 s after `DONE`, if no other
+    command went out) the tracker learns which camera direction is that
+    stage axis.
+  - **Direction only:** the scale stays the nominal one, so a slipping
+    first move still shows up as a difference rather than being learned.
+- **Zero** sets both readings to 0 here. **Stop** puts back the projector
+  and the exposure.
+
+**How it measures**
+- **Correlation:** FFT phase correlation of each kept frame against a
+  reference frame, downscaled 2× and high-pass filtered.
+- **Still content:** the illumination's shape, the DMD fault band and dust on
+  the optics don't move with the wafer, and they correlate at zero shift. So
+  the peak search skips zero and accepts another peak only if it stands out
+  (peak-to-sidelobe ratio ≥ 15).
+- **Dead band:** a shift within ~4 fitted px (~1–2 µm) of the reference
+  reads as 0.
+- **Long moves:** past 22 % of the field, the current frame becomes the new
+  reference.
+- **LOST:** shown if the image jumps too far between frames, leaves the field,
+  or has no features. Press Zero once it's steady.
+- **CPU:** ~15 ms per update. The pip OpenCV has no CUDA, and the RTX 5060
+  isn't needed at this rate.
+
+**Speed limit.** The tracker gets the frames the deflicker keeps: 6–9 per
+second at the white field's 89 µs. At the default 800 µs per step (~3 mm/s),
+a move covers ~400 µm between updates, about the most it can follow. For
+long moves, use a slower step delay, or expect LOST and press Zero after.
+
+**Tested**
+- **Synthetic** (a real white-field frame as the wafer texture, a fixed fault
+  band and dust as static content, sensor noise), 103 frames:
+  - 0.09 px rms (0.05 µm) while moving, including across reference switches
+    on a 480 px run;
+  - worst 2.0 px (1.2 µm) when creeping within the dead band;
+  - no false readings.
+- **Axis mapping:** a camera rotated 90° and mirrored was recovered exactly.
+  A 20 % slip showed as optical 200 vs stepper 250 µm.
+- **Live, stage still, 10 s:** optical held 0.0 / 0.0 µm. Noise peaks
+  reached quality ≤ 7.4, below the threshold of 15.
+- **Not yet done:** a real stage move. Please try one.
+
 ## Fit transform
 
 **Fit transform** (CAMERA panel) shows only the projected field, upright and
@@ -233,6 +298,7 @@ projector's desktop (1776×999).*
 | `POST /camera/fit_transform` | Fit transform (above); ~2 s, answers with the stats, or 409 if the camera or projector is missing or no outline is found. `POST /config {"transform": false}` shows the whole sensor again |
 | `POST /camera/calibrate` | deflicker calibration (above); takes ~6 s, answers with the stats, or 409 if the camera or projector is missing |
 | `GET /focus_score` | Laplacian variance of the latest shown camera frame (sharpness) |
+| `POST /track/start`, `/track/stop`, `/track/zero`; `GET /track/status` | optical tracking (above). Status: `stepper_um`, `optical_um`, `diff_um` (X/Y), `u_um`/`v_um` (camera axes), `status` (tracking / lost), `psr` (quality), `rate` (Hz), `axes` learned |
 | `GET /focus`, `POST /focus` | the saved focus `{"z", "source", "date"}`; POST `{"z": …, "source": …}` saves it (`xyz_stage/focus.json`) |
 | `POST /camera/auto_exposure` | set the exposure so the lit frames of the current projection are bright but unclipped (p99 120–235); answers with the stats plus `exposure_us`, `p99` |
 | `POST /projector/remember`, `POST /projector/restore` | note what the projector shows, and put it back (used around autofocus, calibration and Fit transform) |
@@ -284,6 +350,14 @@ Projector calls return once the change is on screen.
 - **Only one server at a time**, because it uses port 8765.
 
 ## Log
+
+### 2026-10-07 — optical tracking
+
+- **Optical tracking** subpanel in STAGE, with `/track/*` endpoints,
+  `camera/tracker.py` (phase correlation that ignores still content, plus an
+  axis map) and `projector/optics.py` (nominal numbers).
+- **Results:** see "Optical tracking" → Tested. A real stage move is still
+  to do.
 
 ### 2026-10-07 — autofocus: live sharpness, checkerboard, auto exposure, save prompt; focus saved on disk
 

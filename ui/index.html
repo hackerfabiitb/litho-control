@@ -430,6 +430,11 @@
   .af-result { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--accent2);
                border-radius: 3px; font-size: 15px; color: var(--text); }
   .af-result-btns { display: flex; gap: 8px; margin-top: 6px; }
+  .track-table { display: grid; grid-template-columns: 80px 1fr 1fr; gap: 2px 8px;
+                 margin-top: 8px; font-size: 17px; white-space: pre; text-align: right; }
+  .track-table .th { font-size: 13px; color: var(--dim); }
+  .track-table .tl { font-size: 14px; color: var(--muted); text-align: left; }
+  .track-note { font-size: 13px; color: var(--dim); margin-top: 6px; line-height: 1.4; }
   .af-row label { width: 90px; font-size: 14px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
   .af-progress-wrap {
     height: 3px; background: var(--bg3); border-radius: 2px;
@@ -503,6 +508,26 @@
         <span class="pos-lim max" id="limZmax">—</span>
       </div>
       <div class="pos-keys">keys: ← → X · ↑ ↓ Y · PgUp PgDn Z</div>
+    </div>
+
+    <!-- OPTICAL TRACKING -->
+    <div class="subpanel" id="trackPanel">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <div class="step-label" style="margin:0;">Optical tracking</div>
+        <div style="display:flex;gap:6px;">
+          <button class="cam-apply-btn" id="trackZeroBtn" onclick="trackCmd('zero')" style="display:none;"
+                  title="Zero both readings here">Zero</button>
+          <button class="cam-apply-btn" id="trackBtn" onclick="toggleTracking()"
+                  title="Project white and measure the wafer's motion from the camera (needs Fit transform)">Start</button>
+        </div>
+      </div>
+      <div class="track-table" id="trackTable" style="display:none;">
+        <span></span><span class="th">X µm</span><span class="th">Y µm</span>
+        <span class="tl">stepper</span><span id="trSX">—</span><span id="trSY">—</span>
+        <span class="tl">optical</span><span id="trOX">—</span><span id="trOY">—</span>
+        <span class="tl">diff</span><span id="trDX">—</span><span id="trDY">—</span>
+      </div>
+      <div class="track-note" id="trackNote">Shows the stage's motion counted from motor steps next to the wafer's motion measured by the camera.</div>
     </div>
 
     <div class="step-panel">
@@ -1543,6 +1568,67 @@ async function showPattern(name) {
   } catch (e) { log('Projector: ' + e.message, 'err'); }
 }
 
+// ── Optical tracking ───────────────────────────────────────
+// The server tracks the wafer in the camera (camera/tracker.py) and compares
+// it with the motor steps; a difference means the sample moved on its own,
+// or a motor slipped.
+let trackActive = false;
+
+async function trackCmd(what) {
+  const btn = document.getElementById('trackBtn');
+  if (what === 'start') { btn.disabled = true; btn.textContent = 'Starting…'; }
+  try {
+    const r = await fetch('/track/' + what, { method: 'POST', signal: AbortSignal.timeout(30000) });
+    const st = await r.json();
+    if (!r.ok) throw new Error(st.error || ('HTTP ' + r.status));
+    _showTracking(st);
+    log('Tracking: ' + { start: 'started (white projected)', stop: 'stopped', zero: 'zeroed' }[what], 'sys');
+  } catch (e) {
+    log('Tracking: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    _refreshProjStatus();
+  }
+}
+
+function toggleTracking() { trackCmd(trackActive ? 'stop' : 'start'); }
+
+function _showTracking(st) {
+  trackActive = !!st.active;
+  document.getElementById('trackBtn').textContent = trackActive ? 'Stop' : 'Start';
+  document.getElementById('trackZeroBtn').style.display = trackActive ? '' : 'none';
+  document.getElementById('trackTable').style.display = trackActive ? '' : 'none';
+  const note = document.getElementById('trackNote');
+  if (!trackActive) {
+    note.textContent = 'Shows the stage\'s motion counted from motor steps next to the wafer\'s motion measured by the camera.';
+    note.style.color = '';
+    return;
+  }
+  const f = v => (v === null || v === undefined) ? '—' : (v >= 0 ? '+' : '') + v.toFixed(1);
+  const set = (id, v) => { document.getElementById(id).textContent = f(v); };
+  set('trSX', st.stepper_um.X); set('trSY', st.stepper_um.Y);
+  if (st.optical_um) {
+    set('trOX', st.optical_um.X); set('trOY', st.optical_um.Y);
+    set('trDX', st.diff_um.X);    set('trDY', st.diff_um.Y);
+  } else {
+    ['trOX', 'trOY', 'trDX', 'trDY'].forEach(id => document.getElementById(id).textContent = '—');
+  }
+  const learn = ['X', 'Y'].filter(a => !st.axes[a]);
+  note.style.color = st.status === 'lost' ? 'var(--danger)' : '';
+  note.textContent =
+    (st.status === 'lost' ? 'LOST: no clear match (moved too fast, out of view, or no features). ' : `${st.status} · `) +
+    `quality ${st.psr.toFixed(0)} · ${st.rate.toFixed(0)} Hz · ${st.um_per_px} µm/px` +
+    (learn.length ? `\nMove ${learn.join(' and ')} once (≥ 20 steps, one axis at a time) to map camera → stage axes.` +
+                    ` Camera sees u ${f(st.u_um)}, v ${f(st.v_um)} µm.` : '');
+}
+
+async function _pollTracking() {
+  try {
+    const r = await fetch('/track/status', { signal: AbortSignal.timeout(1500) });
+    if (r.ok) _showTracking(await r.json());
+  } catch (_) { /* server down */ }
+}
+
 // ── Clock ──────────────────────────────────────────────────
 // Local time as YYYY-MM-DD_HH-MM-SS (24 h).
 function updateClock() {
@@ -1599,6 +1685,8 @@ updateFocusUI();
 _renderFitButtons();
 loadFocus();
 setInterval(_updateLiveSharpness, 500);
+_pollTracking();
+setInterval(() => { if (trackActive) _pollTracking(); }, 300);
 
 // Auto-try camera server on load and keep polling
 camPingTimer = setInterval(_pingCamServer, 1000);

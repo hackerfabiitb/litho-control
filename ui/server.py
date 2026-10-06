@@ -35,6 +35,13 @@ POST /camera/fit_transform   project white, find the projected image's outline
                              field (saved in camera/fit_transform.json)
 GET  /focus_score            Laplacian variance of the latest shown camera frame
                              (sharpness: what autofocus maximises)
+POST /track/start            optical tracking: project white, pick an unclipped
+                             exposure, and measure the wafer's motion from the
+                             camera (camera/tracker.py); needs Fit transform
+POST /track/stop             stop it, put back projector and exposure
+POST /track/zero             zero both readings (stepper and optical) here
+GET  /track/status           stepper vs optical X/Y in um, their difference,
+                             tracker status and quality, learned axes
 GET  /focus                  the saved focus Z: {"z", "source", "date"} (z null if none)
 POST /focus                  {"z": 1234, "source": "autofocus"}: save it
                              (xyz_stage/focus.json; loaded at startup, nothing moves)
@@ -86,6 +93,8 @@ sys.path.insert(0, os.path.join(ROOT, "projector"))
 sys.path.insert(0, os.path.join(ROOT, "xyz_stage"))
 
 from deflicker import KeepFilter, relative_cutoff  # noqa: E402
+from optics import FIELD_WIDTH_UM  # noqa: E402
+from tracker import AxisMap, Tracker  # noqa: E402
 from fit_transform import draw_debug, find_quad, make_transform  # noqa: E402
 from display import (PatternWindow, detached_displays, extend_desktop,  # noqa: E402
                      find_projector, make_pattern)  # (importing display sets DPI awareness)
@@ -100,6 +109,7 @@ CAL_SECONDS = 5.0
 CAL_FILE = os.path.join(ROOT, "camera", "deflicker_calibration.json")
 FIT_FILE = os.path.join(ROOT, "camera", "fit_transform.json")
 FOCUS_FILE = os.path.join(ROOT, "xyz_stage", "focus.json")
+HOMING_FILE = os.path.join(ROOT, "xyz_stage", "homing.json")
 
 
 # The focus Z lives on disk, owned by the server: "Set focus here" and an
@@ -188,6 +198,8 @@ class Stage(threading.Thread):
         self.seq = 0
         self.cache = {}                      # state lines replayed to new pages
         self.write_lock = threading.Lock()
+        self.listeners = []                  # callables given every firmware line
+        self.last_send = 0.0                 # time.monotonic() of the last command
 
     def status(self):
         # released: the port was let go on request (the UI's Disconnect, or
@@ -211,6 +223,7 @@ class Stage(threading.Thread):
             if self.ser is None:
                 raise RuntimeError("stage not connected")
             self.ser.write((line.strip() + "\n").encode())
+            self.last_send = time.monotonic()
 
     def connect(self):
         if not self.want:
@@ -293,6 +306,8 @@ class Stage(threading.Thread):
                                 and load_focus()["z"] is None):
                             save_focus(int(line[6:]), "adopted from the Uno (FOCUS SET)")
                         self.emit("line", line)
+                        for listener in self.listeners:
+                            listener(line)
                         if line == "READY":
                             # The first line after a reset often arrives with
                             # bytes missing (seen: "POS -704 648 9038" for
@@ -341,6 +356,7 @@ class Camera(threading.Thread):
         self.transform = None                # see fit_transform(); loaded below
         self.transform_on = True
         self._warp = None                    # (matrix, size) while the transform is on
+        self.tracker = None                  # a camera/tracker.Tracker while tracking
         # appended by the grab thread, only read elsewhere
         self.in_times, self.shown_times = deque(maxlen=400), deque(maxlen=400)
         self.stop_flag = threading.Event()
@@ -572,6 +588,9 @@ class Camera(threading.Thread):
                             frame = cv2.warpPerspective(frame, warp[0], warp[1],
                                                         flags=cv2.INTER_LINEAR)
                         self.last_frame = frame
+                        tracker = self.tracker
+                        if tracker is not None:
+                            tracker.feed(frame)
                         if self.stream.clients:
                             self.stream.put(encode(frame))
             except Exception as exc:         # busy camera, unplugged, ...
@@ -801,10 +820,144 @@ class Mirror(threading.Thread):
 
 
 # --------------------------------------------------------------------------- #
+# optical tracking
+# --------------------------------------------------------------------------- #
+
+def steps_per_mm():
+    try:
+        with open(HOMING_FILE, encoding="utf-8") as fh:
+            axes = json.load(fh)["axes"]
+        return {a: float(axes[a]["steps_per_mm"]) for a in "XYZ"}
+    except (OSError, ValueError, KeyError):
+        return {a: 400.0 for a in "XYZ"}
+
+
+class Tracking:
+    """Stepper position vs the wafer's optically measured motion.
+
+    Stepper: the firmware's POS, relative to where tracking started (or was
+    zeroed), in um via steps_per_mm. Optical: camera/tracker.Tracker on the
+    fitted view, scaled by the nominal field width (FIELD_WIDTH_UM over the
+    fitted view's width). The camera's axes are mapped to the stage's from
+    settled single-axis moves (AxisMap): 0.7 s after each DONE, unless another
+    command went out meanwhile, the pair (stepper, optical) is recorded."""
+
+    SETTLE_S = 0.7
+
+    def __init__(self, stage, camera, projector):
+        self.stage, self.camera, self.projector = stage, camera, projector
+        self.tracker = None
+        self.axes = AxisMap()
+        self.spmm = steps_per_mm()
+        self.start_pos = None
+        self.anchor = None                   # (pos, (u, v)) at the last settled point
+        self.exposure_before = None
+        self.um_per_px = None
+        self.lock = threading.Lock()
+        stage.listeners.append(self._on_line)
+
+    @property
+    def active(self):
+        return self.tracker is not None
+
+    def _pos(self):
+        line = self.stage.cache.get("POS")
+        try:
+            return np.array([int(v) for v in line.split()[1:4]])
+        except (AttributeError, ValueError):
+            return None
+
+    def start(self):
+        with self.lock:
+            if self.active:
+                return
+            cam = self.camera
+            if not cam.connected:
+                raise RuntimeError(f"camera not connected ({cam.error})")
+            if not cam.transform or not cam.transform_on:
+                raise RuntimeError("run Fit transform first (and View: fitted): the "
+                                   "tracker's micron scale is the projected field's width")
+            if self._pos() is None:
+                raise RuntimeError("no stage position yet (is the stage connected?)")
+            self.projector.remember()
+            self.projector.source = load_pattern("white_4K.jpg")
+            self.projector.image_name, self.projector.fit = "white_4K.jpg", "native"
+            if self.projector.do("show")["state"] != "image":
+                self.projector.restore()
+                raise RuntimeError(f"projector display not found ({self.projector.error})")
+            self.exposure_before = cam.exposure_us
+            cam.auto_exposure(start=FIT_EXPOSURE_US)
+            time.sleep(0.4)
+            self.um_per_px = FIELD_WIDTH_UM / cam.transform["size"][0]
+            self.tracker = Tracker(self.um_per_px)
+            self.start_pos = self._pos()
+            self.anchor = None
+            cam.tracker = self.tracker
+            print(f"[track] started: {self.um_per_px:.4f} um per fitted px, "
+                  f"exposure {cam.exposure_us:g} us", flush=True)
+
+    def stop(self):
+        with self.lock:
+            if not self.active:
+                return
+            self.camera.tracker = None
+            self.tracker.stop()
+            self.tracker = None
+            self.projector.restore()
+            if self.exposure_before:
+                self.camera.configure(exposure_us=self.exposure_before)
+            print("[track] stopped", flush=True)
+
+    def zero(self):
+        if self.active:
+            self.tracker.reset()
+            self.start_pos = self._pos()
+            self.anchor = None
+
+    def _on_line(self, line):
+        if line == "DONE" and self.active:
+            done_at = time.monotonic()
+            threading.Timer(self.SETTLE_S, self._settled, args=(done_at,)).start()
+
+    def _settled(self, done_at):
+        tr = self.tracker
+        if tr is None or self.stage.last_send > done_at:   # another move started
+            return
+        st, pos = tr.state(), self._pos()
+        if st["status"] != "tracking" or pos is None:
+            return
+        cam = np.array([st["u_um"], st["v_um"]])
+        if self.anchor is not None:
+            last_pos, last_cam = self.anchor
+            d = pos - last_pos
+            nominal = [d[i] / self.spmm[a] * 1000 for i, a in enumerate("XY")]
+            self.axes.add((int(d[0]), int(d[1])), nominal, cam - last_cam)
+        self.anchor = (pos, cam)
+
+    def status(self):
+        tr = self.tracker
+        if tr is None:
+            return {"active": False, "axes": self.axes.learned()}
+        st, pos = tr.state(), self._pos()
+        d = (pos - self.start_pos) if pos is not None else np.zeros(3)
+        nominal = {a: round(d[i] / self.spmm[a] * 1000, 2) for i, a in enumerate("XY")}
+        optical = self.axes.to_stage((st["u_um"], st["v_um"]))
+        out = {"active": True, **st, "stepper_um": nominal,
+               "optical_um": None if optical is None else
+               {"X": round(optical[0], 2), "Y": round(optical[1], 2)},
+               "axes": self.axes.learned(),
+               "scale": {a: self.axes.scale(a) for a in "XY"},
+               "um_per_px": round(self.um_per_px, 4), "exposure_us": self.camera.exposure_us}
+        if optical is not None:
+            out["diff_um"] = {a: round(out["optical_um"][a] - nominal[a], 2) for a in "XY"}
+        return out
+
+
+# --------------------------------------------------------------------------- #
 # HTTP
 # --------------------------------------------------------------------------- #
 
-def make_handler(stage, camera, projector, mirror, shutdown):
+def make_handler(stage, camera, projector, mirror, shutdown, tracking):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
             pass
@@ -903,6 +1056,8 @@ def make_handler(stage, camera, projector, mirror, shutdown):
                 self._json(projector.status())
             elif path == "/focus":
                 self._json(load_focus())
+            elif path == "/track/status":
+                self._json(tracking.status())
             elif path == "/focus_score":
                 f = camera.last_frame
                 score = 0.0 if f is None else float(cv2.Laplacian(f, cv2.CV_64F).var())
@@ -995,6 +1150,12 @@ def make_handler(stage, camera, projector, mirror, shutdown):
                         projector.source = load_pattern(name)
                         projector.image_name = os.path.basename(name)
                     self._projector_reply(projector.do("show"))
+                elif url.path in ("/track/start", "/track/stop", "/track/zero"):
+                    try:
+                        getattr(tracking, url.path.rsplit("/", 1)[1])()
+                    except RuntimeError as exc:
+                        return self._json({**tracking.status(), "error": str(exc)}, 409)
+                    self._json(tracking.status())
                 elif url.path == "/focus":
                     data = json.loads(self._body() or b"{}")
                     if not isinstance(data.get("z"), (int, float)):
@@ -1034,6 +1195,7 @@ def main():
     camera = Camera(args.exposure, args.keep_frac, args.max_hold)
     projector = Projector(args.monitor, auto_extend=not args.no_extend)
     mirror = Mirror(projector)
+    tracking = Tracking(stage, camera, projector)
     for t in (stage, camera, projector, mirror):
         t.start()
 
@@ -1045,7 +1207,7 @@ def main():
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port),
                                  make_handler(stage, camera, projector, mirror,
-                                              shutdown))
+                                              shutdown, tracking))
     server.daemon_threads = True
     print(f"UI on http://localhost:{args.port}   Ctrl+C to stop", flush=True)
     if projector.monitor is None:

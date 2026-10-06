@@ -6,7 +6,7 @@ a camera watches it, and an XYZ stage moves the sample.
 | directory | hardware | status |
 | --- | --- | --- |
 | [`camera/`](camera/README.md) | Basler acA1920-40um (USB3, mono) | live view with DLP flicker removed; flicker measurement |
-| [`projector/`](projector/README.md) | TI DLP471TPEVM over HDMI + USB | test patterns, camera-to-DMD calibration, DMD fault scan |
+| [`projector/`](projector/README.md) | TI DLP471TPEVM over HDMI + USB | test patterns, camera-to-DMD calibration, DMD fault scan. DMD: 1920×1080 mirrors at 5.4 µm, shown as 3840×2160 by pixel shifting; on the wafer (10×, nominal 1070 µm field) 1 pattern px = 0.279 µm, 1 mirror = 0.557 µm |
 | [`xyz_stage/`](xyz_stage/README.md) | Arduino Uno + CNC Shield V3, 3 × DRV8825, 3 steppers (COM4) | `xyz1` firmware (drivers powered only while moving) |
 | `patterns/` | images to project | `calibrate_deflicker.png` (the UI's deflicker calibration), `white_4K.jpg` (the UI's White button), `checker_NNNNpx.png` (3840×2160, square size zero-padded to 4 digits, e.g. `checker_0100px.png`; made by `patterns/make_checkerboards.py [sizes…]`; load at 1:1 pixels) |
 | [`ui/`](ui/README.md) | all three | the control page: stage control (through the server), projector display at native resolution, and side-by-side PROJECTOR mirror and deflickered CAMERA panes, served by `ui/server.py` |

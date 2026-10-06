@@ -5,10 +5,52 @@ Its controller is a **DLPC6540** (GUI Information page; the USB PID is 7540,
 which is not the controller's name) with a DLPA3005 LED driver. It drives a
 0.47" DLP471TP 4K UHD DMD and takes a 3840×2160 input.
 
-The mirror-column numbers in this README assume a 1920×1080 mirror array with
-XPR pixel shifting, where 2 input px correspond to about 1 mirror in each
-axis. That hasn't been checked against the DLP471TP datasheet. The input-pixel
-numbers are measured and don't depend on it.
+The mirror-column numbers in this README use 2 input px = 1 mirror in each
+axis, as below.
+
+## DMD and exposure field
+
+**DMD** (TI DLP471TP datasheet, July 2023, §6.10 "Micromirror Array
+Physical Characteristics"):
+
+| | value |
+| --- | --- |
+| micromirrors | 1920 × 1080 |
+| micromirror (pixel) pitch | **5.4 µm** |
+| active array | 10.368 × 5.832 mm (0.47" diagonal) |
+| displayed resolution | 3840 × 2160 (4K UHD) |
+
+**1920 × 1080 with shifting, vs 3840 × 2160.** The DMD has only 1920 × 1080
+mirrors. The 4K picture comes from a 4-position actuator (XPR) between the DMD
+and the lens. In the datasheet's words, each micromirror displays "four
+distinct pixels on the screen during every frame, resulting in a full 3840 ×
+2160 pixel image". So:
+- a 4K input pixel is placed on a grid half a mirror apart (2.7 µm at the DMD);
+- but each one is drawn by a whole 5.4 µm mirror, so neighbouring 4K pixels
+  overlap. A one-pixel 4K line is drawn as a mirror-wide stripe, not a
+  half-mirror one (2-px vertical bars came out as uniform grey, entries below);
+- the four positions are shown one after another within each frame, so a
+  lithographic exposure sums all four.
+
+The real resolving element is the mirror. The 4K grid lets you place edges
+in half-mirror steps.
+
+**Exposure field on the wafer.** The image goes through a 10× objective.
+From experience the field is about **1070 µm wide (nominal)**:
+
+| | on the wafer |
+| --- | --- |
+| field | **1070 µm × 601.9 µm** (16:9) |
+| 1 pattern pixel (4K input px) | **0.2786 µm** (1070 / 3840) |
+| 1 micromirror | **0.5573 µm** (1070 / 1920) |
+| DMD → wafer demagnification | 9.69× (10.368 mm → 1.070 mm) |
+
+These follow from the nominal 1070 µm and haven't been measured here (a
+stage move against a known pattern would check them). The camera sees the
+same field: in the UI's fitted view (Fit transform), it's 1776 px wide, so
+**0.6025 µm per fitted-view pixel** (≈0.598 µm per raw camera pixel: the
+field spans ~1788 sensor px). `projector/optics.py` holds these numbers
+for code.
 
 It has two connections to the PC:
 
