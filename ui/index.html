@@ -678,11 +678,11 @@
     <span class="topbar-title">Litho Control</span>
     <div style="display:flex;align-items:center;gap:6px;">
       <div class="status-dot" id="dot"></div>
-      <span class="status-text" id="statusText">disconnected</span>
+      <span class="status-text" id="statusText">waiting for the server…</span>
     </div>
     <div class="topbar-sep"></div>
     <button class="conn-btn" id="projModalBtn" onclick="openProjModal()" style="border-color:var(--blue);color:var(--blue);opacity:0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">Projector</button>
-    <button class="conn-btn" id="connBtn" onclick="toggleConnect()">Connect</button>
+    <button class="conn-btn" id="connBtn" onclick="toggleConnect()" title="Release or take back the stage's COM port (e.g. to flash firmware)">Connect stage</button>
   </div>
 
   <!-- LEFT PANEL -->
@@ -1044,11 +1044,13 @@ let isCalibrated = false;
 let stageEvents = null;
 
 async function toggleConnect() {
-  const path = connected ? '/stage/disconnect' : '/stage/connect';
+  const releasing = connected;
+  const path = releasing ? '/stage/disconnect' : '/stage/connect';
+  log(releasing ? 'Releasing the stage COM port (click Connect stage to take it back)…'
+                : 'Searching for the Uno…', 'sys');
   try {
     const r = await fetch(path, { method: 'POST', signal: AbortSignal.timeout(5000) });
     applyStageStatus(await r.json());
-    log(connected ? 'Releasing COM port…' : 'Searching for the Uno…', 'sys');
   } catch (e) {
     log('Server unreachable — is ui/server.py running?', 'err');
   }
@@ -1057,9 +1059,10 @@ async function toggleConnect() {
 function applyStageStatus(s) {
   const was = connected;
   connected = s.connected;
-  if (s.connected)  setStatus('connected · ' + s.port, true);
-  else if (s.error) setStatus('searching for Uno…', false);
-  else              setStatus('disconnected', false);
+  if (s.connected)     setStatus('connected · ' + s.port, true);
+  else if (s.released) setStatus('released · click Connect stage', false);
+  else if (s.error)    setStatus('searching for Uno…', false);
+  else                 setStatus('connecting…', false);
   idleMode = s.idle_mode;
   renderIdleMode();
   if (s.connected && !was) log('Stage connected on ' + s.port, 'sys');
@@ -1089,7 +1092,7 @@ function setStatus(label, on) {
   document.getElementById('dot').className = 'status-dot' + (on ? ' on' : '');
   document.getElementById('statusText').textContent = label;
   const btn = document.getElementById('connBtn');
-  btn.textContent = on ? 'Disconnect' : 'Connect';
+  btn.textContent = on ? 'Release stage' : 'Connect stage';
   btn.className = 'conn-btn' + (on ? ' active' : '');
 }
 

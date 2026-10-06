@@ -159,8 +159,11 @@ Projector calls return once the change is on screen.
   `POS -704 648 9038` for `POS -17004 6848 9038`).
 - **A reloaded page** gets position, limits, calibration and focus from the
   server's cache, without querying the firmware.
-- **Disconnect** (top right) releases COM4, e.g. for `arduino-cli upload`.
-  **Connect** takes it back, which resets the Uno again.
+- **Release stage** (top right) releases COM4, e.g. for `arduino-cli upload`.
+  The top bar then says `released · click Connect stage`, and the terminal
+  prints `[stage] releasing COM4 …`. **Connect stage** takes it back, which
+  resets the Uno again. (The camera's own Disconnect, in the camera header,
+  only stops the page's video streams.)
 
 ## Things to know
 
@@ -174,6 +177,26 @@ Projector calls return once the change is on screen.
 - **Only one server at a time**, because it uses port 8765.
 
 ## Log
+
+### 2026-10-06 — "connected on COM4" in the terminal, "disconnected" in the UI
+
+- **Cause:** COM4 had been released through the top bar's red **Disconnect**
+  button (`POST /stage/disconnect`), which sits next to Projector and the
+  camera's Disconnect. The server printed nothing on release, so the
+  terminal's last stage line was still `connected on COM4`.
+- **Ruled out:** live updates reaching Firefox. A Selenium-driven headless
+  Firefox watched the top bar: it went from connected to disconnected within
+  1 s of `/stage/disconnect`, and back to `connected · COM4` 1 s after
+  `/stage/connect`.
+- **Fixes:**
+  - The server prints a line on release and on reconnect.
+  - `/stage/status` has `released`, and the top bar says
+    `released · click Connect stage`.
+  - The button is labelled **Release stage** / **Connect stage**.
+  - The page's initial text is `waiting for the server…` rather than
+    `disconnected`.
+  - The button's log line now reads the state before the request; it used to
+    log "Searching for the Uno…" on a release.
 
 ### 2026-10-05 — deflicker calibration, deflicker on/off, White button; settings save on Enter or blur
 

@@ -145,8 +145,11 @@ class Stage(threading.Thread):
         self.write_lock = threading.Lock()
 
     def status(self):
+        # released: the port was let go on request (the UI's Disconnect, or
+        # POST /stage/disconnect) and isn't being retried
         return {"connected": self.ser is not None, "port": self.port,
-                "idle_mode": self.idle_mode, "error": self.error}
+                "idle_mode": self.idle_mode, "error": self.error,
+                "released": not self.want}
 
     def emit(self, kind, data):
         with self.cond:
@@ -165,9 +168,14 @@ class Stage(threading.Thread):
             self.ser.write((line.strip() + "\n").encode())
 
     def connect(self):
+        if not self.want:
+            print("[stage] connect requested: taking the port again", flush=True)
         self.want = True
 
-    def disconnect(self):
+    def disconnect(self, reason="Disconnect in the UI"):
+        if self.want:
+            print(f"[stage] releasing {self.port or 'the port'} ({reason}); "
+                  f"click Connect stage to take it back", flush=True)
         self.want = False
         deadline = time.time() + 2
         while self.ser is not None and time.time() < deadline:
@@ -743,7 +751,7 @@ def make_handler(stage, camera, projector, mirror, shutdown):
                     stage.connect()
                     self._json(stage.status())
                 elif url.path == "/stage/disconnect":
-                    stage.disconnect()
+                    stage.disconnect("Disconnect clicked, or POST /stage/disconnect")
                     self._json(stage.status())
                 elif url.path == "/config":
                     data = json.loads(self._body() or b"{}")
@@ -839,7 +847,7 @@ def main():
         pass
     finally:
         camera.stop_flag.set()
-        stage.disconnect()
+        stage.disconnect("server stopping")
         projector.do("close", timeout=2.0)
         server.server_close()
 
