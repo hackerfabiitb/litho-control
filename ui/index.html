@@ -52,6 +52,11 @@
                   border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .ctl-buttons { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px; }
   .cam-ctl .ctl-buttons { padding: 4px 0 0; }
+  .proj-monitor { font-size: 13px; color: var(--dim); padding: 8px 14px 0; }
+  .ctl-block { display: flex; flex-direction: column; gap: 8px; padding: 0 14px 12px; align-items: flex-start; }
+  .checker-row { flex-direction: row; align-items: center; }
+  .fit-row { display: flex; align-items: center; gap: 4px; }
+  .fit-row .hz-btn { font-size: 13px; padding: 5px 7px; }
   .subpanel { margin: 12px 14px; padding: 12px; border: 1px solid var(--border);
               border-radius: 3px; background: var(--bg1); flex-shrink: 0; }
   .sub-hdr { padding: 4px 14px 0; margin-bottom: 0; }
@@ -69,13 +74,14 @@
 
   .topbar-title {
     font-family: var(--mono);
-    font-size: 17px;
+    font-size: 25px;
+    line-height: 1.3;
     font-weight: 600;
-    letter-spacing: 0.2em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--accent);
   }
-  .topbar-clock { font-size: 17px; color: var(--text); white-space: pre; }
+  .topbar-clock { font-size: 22px; color: var(--text); white-space: pre; }
   .status-dot {
     width: 7px; height: 7px; border-radius: 50%;
     background: var(--muted);
@@ -384,9 +390,9 @@
   .log {
     flex: 1;
     overflow-y: auto;
-    padding: 10px 12px;
-    font-size: 17px;
-    line-height: 1.6;
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.45;
     display: flex;
     flex-direction: column;
     gap: 1px;
@@ -403,128 +409,6 @@
   .log-line.sys .log-body { color: var(--warn); }
   .log-line.cal .log-body { color: #c084fc; }
   .log-line.undo .log-body { color: var(--warn); }
-  .raw-row {
-    padding: 8px 10px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-  .raw-send {
-    font-family: var(--mono);
-    font-size: 15px;
-    padding: 4px 10px;
-    border: 1px solid var(--border2);
-    border-radius: 2px;
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.12s;
-  }
-  .raw-send:hover { color: var(--text); border-color: var(--border2); }
-
-  /* ── Modal controls (projector dialog) ── */
-  .cal-close-btn {
-    background: transparent;
-    border: none;
-    color: var(--muted);
-    cursor: pointer;
-    font-size: 24px;
-    padding: 2px 6px;
-    border-radius: 2px;
-    font-family: var(--mono);
-    line-height: 1;
-    transition: color 0.15s;
-  }
-  .cal-close-btn:hover { color: var(--text); }
-  .cal-axis-btn {
-    font-family: var(--mono);
-    font-size: 14px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 4px 10px;
-    border: 1px solid var(--border2);
-    border-radius: 2px;
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    transition: all 0.12s;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-  .cal-axis-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-  .cal-all-btn {
-    font-family: var(--mono);
-    font-size: 15px;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    padding: 8px;
-    border: 1px solid var(--border2);
-    border-radius: 2px;
-    background: transparent;
-    color: var(--text);
-    cursor: pointer;
-    transition: all 0.15s;
-    text-align: center;
-    width: 100%;
-  }
-  .cal-all-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-  .cal-section-sep { border: none; border-top: 1px solid var(--border); }
-
-  /* ── Projector modal ── */
-  .proj-overlay {
-    display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,0.78); z-index: 1000;
-    align-items: center; justify-content: center;
-  }
-  .proj-overlay.open { display: flex; }
-  .proj-modal {
-    background: var(--bg1); border: 1px solid var(--border2);
-    border-radius: 4px; width: 500px; max-height: 90vh;
-    overflow-y: auto; display: flex; flex-direction: column;
-  }
-  .proj-modal::-webkit-scrollbar { width: 4px; }
-  .proj-modal::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-  .proj-header {
-    display: flex; align-items: center; padding: 14px 18px;
-    border-bottom: 1px solid var(--border);
-    position: sticky; top: 0; background: var(--bg1); z-index: 1;
-  }
-  .proj-title {
-    font-size: 15px; font-weight: 600; letter-spacing: 0.2em;
-    text-transform: uppercase; color: var(--blue);
-  }
-  .proj-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-  .proj-section-label {
-    font-size: 14px; font-weight: 600; letter-spacing: 0.2em;
-    text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
-  }
-  .proj-dropzone {
-    border: 1px dashed var(--border2); border-radius: 3px;
-    padding: 28px 20px; text-align: center; cursor: pointer;
-    display: flex; flex-direction: column; align-items: center; gap: 6px;
-    font-size: 17px; color: var(--muted);
-    transition: border-color 0.15s, background 0.15s;
-  }
-  .proj-dropzone:hover, .proj-dropzone.dz-hover {
-    border-color: var(--blue); background: rgba(74,158,255,0.04);
-  }
-  .proj-dropzone-icon { font-size: 39px; color: var(--border2); margin-bottom: 2px; }
-  .proj-preview-wrap {
-    display: flex; flex-direction: column; gap: 6px;
-  }
-  .proj-preview-img {
-    width: 100%; max-height: 220px; object-fit: contain;
-    background: #000; border-radius: 2px; display: block;
-    border: 1px solid var(--border);
-  }
-  .proj-preview-meta { display: flex; justify-content: space-between; align-items: center; }
-  .proj-status-dot {
-    width: 7px; height: 7px; border-radius: 50%; background: var(--muted);
-  }
-  .proj-status-dot.on { background: var(--blue); box-shadow: 0 0 5px var(--blue); }
-  .proj-tip { font-size: 15px; color: var(--dim); line-height: 1.6; }
 
   /* ── State panel (left) ── */
   .state-panel {
@@ -577,11 +461,6 @@
     <div class="log-wrap">
       <div class="log" id="log"></div>
     </div>
-    <div class="raw-row">
-      <input class="tinput" type="text" id="rawCmd" placeholder="raw command…" style="flex:1;" onkeydown="if(event.key==='Enter')sendRaw()" />
-      <button class="raw-send" onclick="sendRaw()">Send</button>
-      <button class="raw-send" onclick="clearLog()">Clr</button>
-    </div>
 
   </div>
 
@@ -593,30 +472,6 @@
       <span class="status-text" id="statusText" title="The server's serial link to the Uno">waiting for the server…</span>
       <div class="cam-sep"></div>
       <button class="conn-btn small" id="connBtn" onclick="toggleConnect()" title="Release or take back the stage's COM port (e.g. to flash firmware)">Connect</button>
-    </div>
-
-    <!-- Z FOCUS -->
-    <div class="subpanel">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;">
-        <div class="step-label" style="margin:0;">Z Focus</div>
-        <span id="focusPosLabel" style="font-size:15px;color:var(--muted);">not set</span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <button class="go-btn" style="margin-top:0;" onclick="setFocus()">Set focus here</button>
-        <button class="go-btn" style="margin-top:0;" id="goFocusBtn" onclick="goFocus()" disabled>Go to focus</button>
-      </div>
-      <div class="af-section">
-        <div class="step-label" style="margin-bottom:8px;">Autofocus (Z sweep)</div>
-        <div class="af-row"><label>RANGE ±</label><div class="numfield" data-step="50" data-min="10" style="width:120px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afRange" value="500" /><button class="nf-btn" tabindex="-1">›</button></div><span class="unit">steps</span></div>
-        <div class="af-row"><label>STEP</label><div class="numfield" data-step="10" data-min="1" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afStep" value="50" /><button class="nf-btn" tabindex="-1">›</button></div><span class="unit">steps</span></div>
-        <div class="af-row"><label>SETTLE</label><div class="numfield" data-step="50" data-min="50" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afSettle" value="300" /><button class="nf-btn" tabindex="-1">›</button></div><span class="unit">ms per move</span></div>
-        <div class="af-progress-wrap" id="afProgressWrap">
-          <div class="af-progress-bar" id="afProgressBar"></div>
-        </div>
-        <div class="af-status" id="afStatus"></div>
-        <button class="go-btn" style="margin-top:6px;" id="afRunBtn" onclick="runAutofocus()">Run Autofocus</button>
-        <button class="af-cancel-btn" id="afCancelBtn" onclick="cancelAutofocus()">Cancel</button>
-      </div>
     </div>
 
     <div class="step-label sub-hdr">Position</div>
@@ -678,6 +533,30 @@
       <div class="state-info">Moves are powered either way. Use Hold if an axis drifts at rest.</div>
     </div>
 
+    <!-- Z FOCUS -->
+    <div class="subpanel">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;">
+        <div class="step-label" style="margin:0;">Z Focus</div>
+        <span id="focusPosLabel" style="font-size:15px;color:var(--muted);">not set</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button class="go-btn" style="margin-top:0;" onclick="setFocus()">Set focus here</button>
+        <button class="go-btn" style="margin-top:0;" id="goFocusBtn" onclick="goFocus()" disabled>Go to focus</button>
+      </div>
+      <div class="af-section">
+        <div class="step-label" style="margin-bottom:8px;">Autofocus (Z sweep)</div>
+        <div class="af-row"><label>RANGE ±</label><div class="numfield" data-step="50" data-min="10" style="width:120px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afRange" value="500" /><button class="nf-btn" tabindex="-1">›</button></div><span class="unit">steps</span></div>
+        <div class="af-row"><label>STEP</label><div class="numfield" data-step="10" data-min="1" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afStep" value="50" /><button class="nf-btn" tabindex="-1">›</button></div><span class="unit">steps</span></div>
+        <div class="af-row"><label>SETTLE</label><div class="numfield" data-step="50" data-min="50" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afSettle" value="300" /><button class="nf-btn" tabindex="-1">›</button></div><span class="unit">ms per move</span></div>
+        <div class="af-progress-wrap" id="afProgressWrap">
+          <div class="af-progress-bar" id="afProgressBar"></div>
+        </div>
+        <div class="af-status" id="afStatus"></div>
+        <button class="go-btn" style="margin-top:6px;" id="afRunBtn" onclick="runAutofocus()">Run Autofocus</button>
+        <button class="af-cancel-btn" id="afCancelBtn" onclick="cancelAutofocus()">Cancel</button>
+      </div>
+    </div>
+
   </div>
 
   <!-- PROJECTOR panel (left of the projector preview) -->
@@ -687,17 +566,37 @@
       <div class="cam-dot" id="projPanelDot"></div>
       <span class="cam-status-text" id="projPaneInfo">—</span>
     </div>
+    <div class="proj-monitor" id="projMonitorInfo">—</div>
     <div class="ctl-buttons">
       <button class="cam-apply-btn" onclick="showPattern('white_4K.jpg')"
               title="Project patterns/white_4K.jpg (all white)">White</button>
-      <button class="cam-apply-btn" onclick="openProjModal()"
-              title="Load an image and project it (fit modes, Blank, Close)">Image…</button>
+      <button class="cam-apply-btn" onclick="blankProjection()"
+              title="Black over the whole projector (pattern window stays up)">Black</button>
+      <button class="cam-apply-btn" onclick="stopProjection()"
+              title="Close the pattern window: the projector shows its normal desktop">Desktop</button>
+    </div>
+    <div class="ctl-block">
+      <button class="cam-apply-btn" onclick="document.getElementById('projFileInput').click()"
+              title="Choose an image; it is projected straight away with the fit below">Image…</button>
+      <input type="file" id="projFileInput" accept="image/*" style="display:none;" onchange="onProjFileChange(event)" />
+      <div class="fit-row" title="How an image is placed on the 3840×2160 projector">
+        <span class="cam-ctrl-label" style="width:auto;">FIT</span>
+        <button class="hz-btn" data-fit="native"  onclick="setProjFit('native')"  title="1 image px = 1 projector px, centred (masks)">1:1</button>
+        <button class="hz-btn" data-fit="contain" onclick="setProjFit('contain')" title="scale to fit inside">Contain</button>
+        <button class="hz-btn" data-fit="cover"   onclick="setProjFit('cover')"   title="scale to fill, cropping">Cover</button>
+        <button class="hz-btn" data-fit="stretch" onclick="setProjFit('stretch')" title="stretch to 3840×2160">Stretch</button>
+      </div>
+    </div>
+    <div class="ctl-block checker-row">
+      <button class="cam-apply-btn" onclick="showChecker()"
+              title="Black/white checkerboard at the projector's resolution, top-left square white">Checker</button>
+      <div class="numfield" data-step="10" data-min="1" style="width:120px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="checkerSize" value="100" onchange="checkerSizeChanged()" /><button class="nf-btn" tabindex="-1">›</button></div>
+      <span class="unit">px squares</span>
     </div>
   </div>
 
   <!-- PROJECTOR preview (top right) -->
   <div class="view proj-view">
-    <div class="pane-label"><span>PROJECTOR</span><span>what the projector shows</span></div>
           <div class="cam-feed-wrap">
             <img id="projMirrorImg" src="" alt="" style="display:none;" />
             <div class="cam-placeholder" id="projMirrorPlaceholder">
@@ -733,7 +632,6 @@
 
   <!-- CAMERA feed (bottom right) -->
   <div class="view cam-view">
-    <div class="pane-label"><span>CAMERA</span><span>deflickered feed</span></div>
           <div class="cam-feed-wrap" id="camFeedWrap">
             <img id="camImg" src="" alt="" style="display:none;" onerror="onCamImgError()" />
             <div class="cam-placeholder" id="camPlaceholder">
@@ -744,78 +642,6 @@
           </div>
   </div>
 
-</div>
-
-<!-- ════════════════════════════════════════════════
-     PROJECTOR MODAL
-════════════════════════════════════════════════ -->
-<div class="proj-overlay" id="projOverlay">
-  <div class="proj-modal">
-
-    <div class="proj-header">
-      <span class="proj-title">Projector</span>
-      <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
-        <div class="proj-status-dot" id="projDot"></div>
-        <span style="font-size:15px;color:var(--muted);" id="projStatusText">not projecting</span>
-        <button class="cal-close-btn" onclick="closeProjModal()">✕</button>
-      </div>
-    </div>
-
-    <div class="proj-body">
-
-      <!-- Image selection -->
-      <div>
-        <div class="proj-section-label">Image</div>
-        <div class="proj-dropzone" id="projDropzone">
-          <input type="file" id="projFileInput" accept="image/*" style="display:none;" onchange="onProjFileChange(event)" />
-          <div class="proj-dropzone-icon">⊞</div>
-          <div>Click to browse or drop image here</div>
-          <div style="font-size:15px;color:var(--dim);">PNG · JPG · TIFF · BMP</div>
-        </div>
-        <div class="proj-preview-wrap" id="projPreviewWrap" style="display:none;">
-          <img class="proj-preview-img" id="projPreviewImg" src="" alt="" />
-          <div class="proj-preview-meta">
-            <span style="font-size:15px;color:var(--muted);" id="projFileName"></span>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <span style="font-size:15px;color:var(--dim);" id="projFileSize"></span>
-              <button class="cam-apply-btn" onclick="resetProjImage()">Change</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Display -->
-      <hr class="cal-section-sep" />
-      <div>
-        <div class="proj-section-label">Display</div>
-        <div style="font-size:17px;color:var(--text);" id="projMonitorInfo">—</div>
-      </div>
-
-      <!-- Controls -->
-      <hr class="cal-section-sep" />
-      <div style="display:flex;gap:8px;">
-        <button class="cal-all-btn" id="projBtn" onclick="startProjection()">Project Image →</button>
-        <button class="cal-axis-btn" onclick="blankProjection()" style="padding:8px 16px;">Blank</button>
-        <button class="cal-axis-btn" id="projStopBtn" onclick="stopProjection()" style="display:none;padding:8px 16px;border-color:var(--danger);color:var(--danger);">Close</button>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center;margin-top:8px;">
-        <span style="font-size:14px;color:var(--muted);letter-spacing:0.12em;">FIT</span>
-        <button class="hz-btn" data-fit="native"  style="flex:1;font-size:14px;" onclick="setProjFit('native')">1:1 pixels</button>
-        <button class="hz-btn" data-fit="contain" style="flex:1;font-size:14px;" onclick="setProjFit('contain')">Contain</button>
-        <button class="hz-btn" data-fit="cover"   style="flex:1;font-size:14px;" onclick="setProjFit('cover')">Cover</button>
-        <button class="hz-btn" data-fit="stretch" style="flex:1;font-size:14px;" onclick="setProjFit('stretch')">Stretch</button>
-      </div>
-      <div class="proj-tip" style="margin-top:10px;">
-        The server shows the image full-screen on the projector at its native resolution,
-        with no browser scaling. <strong>1:1 pixels</strong> maps each image pixel to one
-        projector input pixel, centred, which is the mode for masks; the other fits scale
-        with nearest-neighbour so binary masks stay binary. <strong>Blank</strong> shows black;
-        <strong>Close</strong> removes the window and the projector shows the desktop again.
-        The PROJECTOR pane mirrors what the projector is really showing.
-      </div>
-
-    </div>
-  </div>
 </div>
 
 
@@ -1157,13 +983,6 @@ function log(msg, type='sys') {
   el.scrollTop = el.scrollHeight;
 }
 
-function clearLog() { document.getElementById('log').innerHTML = ''; }
-
-function sendRaw() {
-  const inp = document.getElementById('rawCmd');
-  if (inp.value.trim()) { send(inp.value.trim()); inp.value = ''; }
-}
-
 // ── Keyboard ───────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
@@ -1178,38 +997,41 @@ document.addEventListener('keydown', e => {
 });
 
 // ── Projector ───────────────────────────────────────────────
-// ui/server.py shows the image full-screen on the projector itself, at its
+// ui/server.py shows images full-screen on the projector itself, at its
 // native 3840x2160 with no browser scaling, and mirrors the projector's
-// screen into the PROJECTOR pane.
-let projFile    = null;
-let projBlobUrl = null;
+// screen into the preview. The PROJECTOR panel drives it: White, Black,
+// Desktop, Image… (+ fit), Checker.
 let projFit     = 'native';
 let projState   = 'closed';
+let projImage   = null;
 
-function openProjModal()  { document.getElementById('projOverlay').classList.add('open'); _refreshProjStatus(); }
-function closeProjModal() { document.getElementById('projOverlay').classList.remove('open'); }
-
-function onProjFileChange(e) { if (e.target.files[0]) loadProjFile(e.target.files[0]); }
-
-function resetProjImage() {
-  if (projBlobUrl) { URL.revokeObjectURL(projBlobUrl); projBlobUrl = null; }
-  projFile = null;
-  document.getElementById('projPreviewWrap').style.display = 'none';
-  document.getElementById('projDropzone').style.display = '';
-  document.getElementById('projFileInput').value = '';
+// Image…: the file chooser opens at once; the chosen image is projected
+// straight away with the current fit.
+async function onProjFileChange(e) {
+  const file = e.target.files[0];
+  e.target.value = '';                 // so choosing the same file again still fires
+  if (!file) return;
+  try {
+    const q = `?fit=${projFit}&name=${encodeURIComponent(file.name)}`;
+    const s = await _projPost('/projector/image' + q, file,
+                              { 'Content-Type': 'application/octet-stream' });
+    log(`Projector: showing ${s.image} (${s.image_size[0]}×${s.image_size[1]}, ${s.fit})`, 'sys');
+  } catch (err) { log('Projector: ' + err.message, 'err'); }
 }
 
-function loadProjFile(file) {
-  if (projBlobUrl) URL.revokeObjectURL(projBlobUrl);
-  projFile = file;
-  projBlobUrl = URL.createObjectURL(file);
-  document.getElementById('projPreviewImg').src = projBlobUrl;
-  document.getElementById('projFileName').textContent = file.name;
-  document.getElementById('projFileSize').textContent =
-    file.size > 1048576 ? (file.size/1048576).toFixed(1)+' MB' : Math.round(file.size/1024)+' KB';
-  document.getElementById('projPreviewWrap').style.display = '';
-  document.getElementById('projDropzone').style.display = 'none';
-  log('Projector: image loaded — click Project Image to show it', 'sys');
+async function showChecker() {
+  const n = Math.round(+document.getElementById('checkerSize').value);
+  if (!(n >= 1)) { log('Checkerboard: square size must be at least 1 px', 'err'); return; }
+  try {
+    await _projPost('/projector/pattern', JSON.stringify({ checker: n }),
+                    { 'Content-Type': 'application/json' });
+    log(`Projector: checkerboard, ${n} px squares`, 'sys');
+  } catch (err) { log('Projector: ' + err.message, 'err'); }
+}
+
+// A new square size re-projects at once if a checkerboard is showing.
+function checkerSizeChanged() {
+  if (projState === 'image' && projImage && projImage.startsWith('checker')) showChecker();
 }
 
 async function _projPost(path, body, headers) {
@@ -1234,36 +1056,13 @@ function _renderFitButtons() {
     b.classList.toggle('active', b.dataset.fit === projFit));
 }
 
-function _initProjDrop() {
-  const dz = document.getElementById('projDropzone');
-  dz.addEventListener('click', () => document.getElementById('projFileInput').click());
-  dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('dz-hover'); });
-  dz.addEventListener('dragleave', () => dz.classList.remove('dz-hover'));
-  dz.addEventListener('drop', e => {
-    e.preventDefault(); dz.classList.remove('dz-hover');
-    const f = e.dataTransfer.files[0];
-    if (f && f.type.startsWith('image/')) loadProjFile(f);
-  });
-  _renderFitButtons();
-}
-
-async function startProjection() {
-  if (!projFile) { log('Projector: load an image first', 'err'); return; }
-  try {
-    const q = `?fit=${projFit}&name=${encodeURIComponent(projFile.name)}`;
-    const s = await _projPost('/projector/image' + q, projFile,
-                              { 'Content-Type': 'application/octet-stream' });
-    log(`Projector: showing ${s.image} (${s.image_size[0]}×${s.image_size[1]}, ${s.fit})`, 'sys');
-  } catch (e) { log('Projector: ' + e.message, 'err'); }
-}
-
 async function blankProjection() {
   try { await _projPost('/projector/blank'); log('Projector: blank (black)', 'sys'); }
   catch (e) { log('Projector: ' + e.message, 'err'); }
 }
 
 async function stopProjection() {
-  try { await _projPost('/projector/close'); log('Projector: window closed — desktop visible', 'sys'); }
+  try { await _projPost('/projector/close'); log('Projector: desktop (pattern window closed)', 'sys'); }
   catch (e) { log('Projector: ' + e.message, 'err'); }
 }
 
@@ -1276,12 +1075,11 @@ async function _refreshProjStatus() {
 
 function _setProjStatus(s) {
   projState = s.state;
+  projImage = s.image;
   const active = s.state !== 'closed';
   const label = !s.monitor ? 'projector display not found'
-              : { closed: 'desktop (no pattern window)', blank: 'blank (black)',
+              : { closed: 'desktop', blank: 'black',
                   image: `${s.image} · ${s.fit}` }[s.state];
-  document.getElementById('projDot').className = 'proj-status-dot' + (active ? ' on' : '');
-  document.getElementById('projStatusText').textContent = label;
   document.getElementById('projPaneInfo').textContent = label;
   document.getElementById('projPanelDot').className =
     'cam-dot' + (!s.monitor ? ' err' : active ? ' on' : '');
@@ -1289,8 +1087,8 @@ function _setProjStatus(s) {
     ? `${s.monitor.replace(/^\\\\\.\\/, '')} · ${s.width}×${s.height}`
     : `Not found (${s.error}). Is the projector on? The server checks every 3 s ` +
       'and extends the desktop to it (Win+P → Extend) once it is plugged in.';
-  document.getElementById('projBtn').textContent = s.state === 'image' ? 'Send Image Again →' : 'Project Image →';
-  document.getElementById('projStopBtn').style.display = active ? '' : 'none';
+  projFit = s.fit || projFit;
+  _renderFitButtons();
 }
 
 // ── DONE promise ───────────────────────────────────────────
@@ -1661,7 +1459,7 @@ log('Litho control ready — the stage connects automatically.', 'sys');
 startStageEvents();
 updateLimitsUI();
 updateFocusUI();
-_initProjDrop();
+_renderFitButtons();
 
 // Auto-try camera server on load and keep polling
 camPingTimer = setInterval(_pingCamServer, 1000);

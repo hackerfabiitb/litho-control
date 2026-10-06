@@ -41,8 +41,8 @@ Then:
 - **Stage:** nothing to do. The server finds the Uno by its USB ID (with
   `xyz_stage/find_arduino.py`) and connects by itself. The STAGE panel
   shows `connected · COM4`.
-- **Projector:** click **Image…** in the PROJECTOR panel to load an image and
-  project it.
+- **Projector:** click **Image…** in the PROJECTOR panel, pick an image, and
+  it's projected at once.
 
 ## Layout
 
@@ -52,20 +52,23 @@ bottom half (camera):
 ```
 | info      | STAGE            | PROJECTOR panel | projector preview |
 | title     | status, Release  | status          |                   |
-| clock     | Z focus          | White, Image…   |                   |
-| saved     | position         |-----------------|-------------------|
-|  state    | step size        | CAMERA panel    | camera feed       |
-| serial    | step delay       | status, stats   |                   |
-|  log      | motors           | exposure, keep, |                   |
+| clock     | position         | White Black     |                   |
+| saved     | step size        |  Desktop        |                   |
+|  state    | step delay       | Image… + fit    |                   |
+| serial    | motors           | Checker [px]    |                   |
+|  log      | Z focus          |-----------------|-------------------|
+|           |                  | CAMERA panel    | camera feed       |
+|           |                  | status, stats,  |                   |
+|           |                  | exposure, keep, |                   |
 |           |                  | max hold,       |                   |
 |           |                  | deflicker       |                   |
 ```
 
 | area | shows |
 | --- | --- |
-| **info** (full height, left) | "HackerFab IITB Litho Control", the local time as `YYYY-MM-DD_HH-MM-SS` (24 h), a state snapshot export, and the **serial log** with a raw-command box at the bottom |
-| **STAGE** (full height) | the stage status (`connected · COM4`: the server's serial link to the Uno) with **Release / Connect**. Below it: **Z focus** (set / go / autofocus sweep); **position**, one row per axis, `limit min [‹ position ›] limit max` ("—" for an axis without limits; ‹ › move one step; typing a position and pressing Enter moves that axis there, clamped to its limits); step size (presets, and a field showing the current step); step delay (µs per step, lower = faster); motors between moves |
-| **PROJECTOR** panel | whether the projector's display was found and what it shows; **White** (`patterns/white_4K.jpg`); **Image…** (the projector dialog) |
+| **info** (full height, left) | "HackerFab IITB Litho Control", the local time as `YYYY-MM-DD_HH-MM-SS` (24 h), a state snapshot export, and the **serial log** |
+| **STAGE** (full height) | the stage status (`connected · COM4`: the server's serial link to the Uno) with **Release / Connect**. Below it: **position**, one row per axis, `limit min [‹ position ›] limit max` ("—" for an axis without limits; ‹ › move one step; typing a position and pressing Enter moves that axis there, clamped to its limits); step size (presets, and a field showing the current step); step delay (µs per step, lower = faster); motors between moves; **Z focus** (set / go / autofocus sweep) last |
+| **PROJECTOR** panel | what the projector shows, and its display (`DISPLAY5 · 3840×2160`, or why it wasn't found); **White** (`patterns/white_4K.jpg`), **Black**, **Desktop**; **Image…** with the **fit** selector; **Checker** with its square size in px. See Projecting |
 | **projector preview** (top right) | a screen capture of the projector's display, 1280 px wide, about 5 fps. It shows what the projector is really showing, including the desktop or anything that pops up over the pattern. The **mouse pointer** is drawn in when it's on the projector's screen (screen captures leave it out) |
 | **CAMERA** panel | camera status and Connect/Disconnect (for the page's video streams only); fps in → shown, mean / cutoff (fixed or live), forced; exposure (µs, ‹ › ±50), keep ≥ (fraction of the top, ±0.02), max hold (s, ±0.1); **Deflicker: on/off** (off = every camera frame, flicker included); **Calibrate deflicker** (see below) |
 | **camera feed** (bottom right) | the deflickered camera feed at full resolution, 1936×1216 |
@@ -105,19 +108,25 @@ the field's › arrow.
 
 ## Projecting
 
-In the projector dialog (**Image…** in the PROJECTOR panel):
-- **Load an image** (PNG, JPG, BMP or TIFF), then click **Project Image**.
-- **Fit modes:**
-  - **1:1 pixels** (default): one image pixel per projector input pixel,
-    centred and cropped if the image is too large. This is the mode for masks.
+All from the PROJECTOR panel:
+- **White:** `patterns/white_4K.jpg`.
+- **Black:** black over the whole projector; the pattern window stays up.
+- **Desktop:** closes the pattern window, so the projector shows its usual
+  Windows desktop. Desktop light exposes resist.
+- **Image…:** opens the file chooser (PNG, JPG, BMP or TIFF). The chosen
+  image is projected at once, with the selected fit:
+  - **1:1** (default): one image pixel per projector input pixel, centred,
+    and cropped if the image is too large. This is the mode for masks.
   - **Contain / Cover / Stretch:** scale the image. Enlarging uses
-    nearest-neighbour, so binary masks stay binary.
-- **Blank:** black, window kept.
-- **Close:** removes the window; the projector shows the desktop again, and
-  desktop light would expose resist.
+    nearest-neighbour, so binary masks stay binary. Changing the fit
+    re-applies it to what's showing.
+- **Checker [N] px squares:** a black/white checkerboard drawn at the
+  projector's resolution, top-left square white (as
+  `patterns/make_checkerboards.py`). Changing N while a checkerboard is
+  showing re-projects it.
 
-The window only opens with the first Project or Blank. Starting the server
-doesn't change what the projector shows.
+The pattern window only opens with the first White, Black, Image or Checker.
+Starting the server doesn't change what the projector shows.
 
 ## Deflicker calibration
 
@@ -165,7 +174,7 @@ was 12.2.
 | `POST /projector/image?fit=native&name=x.png` | body = image file |
 | `POST /projector/fit` | `{"fit": "native" / "contain" / "cover" / "stretch"}` |
 | `POST /projector/blank`, `POST /projector/close` | |
-| `POST /projector/pattern` | `{"name": "white_4K.jpg"}`: show an image from `patterns/` at 1:1 |
+| `POST /projector/pattern` | `{"name": "white_4K.jpg"}`: show an image from `patterns/`; `{"checker": 100}`: a checkerboard with 100 px squares at the projector's resolution. The fit isn't changed |
 | `POST /shutdown` | stop the server cleanly, as Ctrl+C does. `start.ps1` sends it when the UI window is closed |
 
 Projector calls return once the change is on screen.
@@ -209,6 +218,24 @@ Projector calls return once the change is on screen.
 - **Only one server at a time**, because it uses port 8765.
 
 ## Log
+
+### 2026-10-07 — projector panel holds everything; raw command box and preview labels removed
+
+- **Projector panel:** White, Black, Desktop, Image… with the fit selector,
+  and Checker with a px field. The projector dialog is gone: Image… opens
+  the file chooser directly and projects the choice. Its Blank is the Black
+  button, and its Close is Desktop. `POST /projector/pattern` takes
+  `{"checker": N}` and no longer forces the 1:1 fit.
+- **Removed:** the raw-command row under the serial log, and the labels
+  over the two previews.
+- **Smaller log text** (13 px) and a bigger title (25 px) and clock (22 px).
+- **Z focus** is the last subpanel in STAGE.
+- **Tested** with Selenium and headless Firefox against the server, with the
+  projector on:
+  - White, Checker, › on the size (re-projected at 110 px), Contain,
+    Image… (`patterns/checker_0300px.png`), Black and Desktop each changed
+    `/projector/status` as expected;
+  - no column overflows at a maximised 1080p window.
 
 ### 2026-10-07 — layout in panels: info | STAGE | projector & camera panels | previews
 

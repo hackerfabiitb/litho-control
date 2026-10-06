@@ -36,6 +36,9 @@ POST /projector/image?fit=native|contain|cover|stretch&name=...
 POST /projector/fit          {"fit": ...} re-fit the current image
 POST /projector/blank        show black (window stays up)
 POST /projector/pattern      {"name": "white_4K.jpg"}: show an image from patterns/
+                             {"checker": 100}: a black/white checkerboard with
+                             100 px squares at the projector's resolution
+                             (top-left square white, as patterns/make_checkerboards.py)
 POST /projector/close        close the window; the projector shows the desktop
 POST /shutdown               stop the server cleanly (ui\\start.ps1 sends it
                              when the UI window is closed)
@@ -68,7 +71,7 @@ sys.path.insert(0, os.path.join(ROOT, "xyz_stage"))
 
 from deflicker import KeepFilter, relative_cutoff  # noqa: E402
 from display import (PatternWindow, detached_displays, extend_desktop,  # noqa: E402
-                     find_projector)  # (importing display sets DPI awareness)
+                     find_projector, make_pattern)  # (importing display sets DPI awareness)
 from find_arduino import BAUD, find_arduino  # noqa: E402
 from pylon_utils import _try_set, frame_score, grab_frames, open_camera  # noqa: E402
 
@@ -788,10 +791,22 @@ def make_handler(stage, camera, projector, mirror, shutdown):
                         return self._json({**camera.stats(), "error": str(exc)}, 409)
                     self._json(camera.stats())
                 elif url.path == "/projector/pattern":
-                    name = json.loads(self._body() or b"{}").get("name", "")
-                    projector.source = load_pattern(name)
-                    projector.image_name = os.path.basename(name)
-                    projector.fit = "native"
+                    # Made or stored at the projector's resolution, so every
+                    # fit shows it 1:1; the fit selection is left as it is.
+                    data = json.loads(self._body() or b"{}")
+                    if "checker" in data:
+                        n = int(data["checker"])
+                        if n < 1:
+                            raise ValueError("checker square size must be >= 1 px")
+                        m = projector.monitor
+                        w, h = (m.width, m.height) if m else (3840, 2160)
+                        grey = 255 - make_pattern(f"checker{n}", w, h)
+                        projector.source = cv2.cvtColor(grey, cv2.COLOR_GRAY2BGR)
+                        projector.image_name = f"checker {n} px"
+                    else:
+                        name = data.get("name", "")
+                        projector.source = load_pattern(name)
+                        projector.image_name = os.path.basename(name)
                     self._projector_reply(projector.do("show"))
                 elif url.path == "/shutdown":
                     self._json({"ok": True})
