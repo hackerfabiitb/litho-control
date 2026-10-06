@@ -28,7 +28,7 @@
     --sans:     'IBM Plex Sans', sans-serif;
   }
 
-  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 20px; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 20px; font-variant-numeric: tabular-nums; }
 
   /* ── Layout ── */
   .shell {
@@ -57,6 +57,7 @@
     text-transform: uppercase;
     color: var(--accent);
   }
+  .topbar-clock { font-size: 17px; color: var(--text); white-space: pre; }
   .topbar-sep { flex: 1; }
   .status-dot {
     width: 7px; height: 7px; border-radius: 50%;
@@ -160,7 +161,7 @@
     color: var(--muted); border-bottom: 1px solid var(--border);
     white-space: nowrap; overflow: hidden;
   }
-  .pane-label span:last-child { letter-spacing: 0; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+  .pane-label span:last-child { letter-spacing: 0; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: pre; }
   .cam-feed-wrap {
     background: #080808;
     position: relative;
@@ -261,38 +262,41 @@
   }
   .pos-row {
     display: grid;
-    /* value column sized to its content: a fixed 24px cut "-17004" to "-170" */
-    grid-template-columns: 18px 1fr auto;
+    /* axis | min limit | - | value | + | max limit */
+    grid-template-columns: 22px 1fr 44px 7.5ch 44px 1fr;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
   }
   .pos-axis {
-    font-size: 15px;
+    font-size: 17px;
     font-weight: 600;
     color: var(--muted);
-    letter-spacing: 0.1em;
   }
-  .pos-bar-wrap {
-    height: 3px;
-    background: var(--bg3);
-    border-radius: 1px;
-    overflow: hidden;
-  }
-  .pos-bar {
-    height: 100%;
-    background: var(--accent);
-    border-radius: 1px;
-    transition: width 0.25s ease;
-    width: 0%;
-  }
+  .pos-lim { font-size: 15px; color: var(--dim); white-space: nowrap; }
+  .pos-lim.min { text-align: right; }
+  .pos-lim.max { text-align: left; }
   .pos-val {
-    font-size: 17px;
-    font-weight: 500;
+    font-size: 20px;
+    font-weight: 600;
     color: var(--text);
-    text-align: right;
-    min-width: 52px;
-    font-variant-numeric: tabular-nums;
+    text-align: center;
   }
+  .pos-jog {
+    height: 38px;
+    font-family: var(--mono);
+    font-size: 20px;
+    border: 1px solid var(--border2);
+    border-radius: 3px;
+    background: var(--bg2);
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.08s;
+  }
+  .pos-jog:hover { border-color: var(--accent); color: var(--accent); }
+  .pos-jog:active, .pos-jog.flash { border-color: var(--accent); color: var(--accent);
+                                    background: rgba(0,229,160,0.12); }
+  .pos-keys { font-size: 13px; color: var(--dim); margin-top: 2px; }
 
   /* ── Step size ── */
   .step-panel {
@@ -355,55 +359,7 @@
   .idle-seg .hz-btn small { font-size: 14px; color: var(--dim); }
   .idle-seg .hz-btn.active { border-color: var(--accent); color: var(--accent); }
 
-  /* ── Jog pad ── */
-  .jog-card {
-    background: var(--bg1);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    padding: 20px;
-  }
-  .jog-card-title { font-size: 14px; color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 20px; }
-  .jog-outer { display: flex; gap: 24px; align-items: center; justify-content: center; }
-  .jog-xy { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 4px; }
-  .jbtn {
-    font-family: var(--mono);
-    font-size: 27px;
-    border: 1px solid var(--border2);
-    border-radius: 3px;
-    background: var(--bg2);
-    color: var(--dim);
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: all 0.08s;
-    user-select: none;
-  }
-  .jbtn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.04); }
-  .jbtn:active, .jbtn.flash { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.12); transform: scale(0.93); }
-  .jbtn.center-cell {
-    background: var(--bg3);
-    border-color: var(--border);
-    font-size: 14px;
-    color: var(--muted);
-    letter-spacing: 0.08em;
-    cursor: default;
-  }
-  .jbtn.center-cell:hover { border-color: var(--border); color: var(--muted); background: var(--bg3); transform: none; }
-  .jog-z { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-  .jog-z-label { font-size: 14px; color: var(--muted); letter-spacing: 0.12em; margin-bottom: 2px; }
-  .jbtn-z { width: 52px; height: 52px; }
-  .jog-z-track {
-    width: 1px; height: 36px;
-    background: linear-gradient(to bottom, var(--accent2), transparent);
-    margin: 2px auto;
-  }
-  .kbd-row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
-  .kbd { font-size: 14px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 2px; padding: 2px 6px; color: var(--muted); }
-
-  /* ── Jog + Z focus side by side ── */
-  .jog-row { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: start; }
-
-  /* ── Goto / Relative cards ── */
-  .twoCol { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  /* ── Cards (Z focus) ── */
   .mcard {
     background: var(--bg1);
     border: 1px solid var(--border);
@@ -411,8 +367,6 @@
     padding: 16px;
   }
   .mcard-title { font-size: 14px; color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 12px; }
-  .axis-row { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
-  .axis-lbl { font-size: 15px; color: var(--muted); font-weight: 600; }
   .go-btn {
     width: 100%;
     margin-top: 10px;
@@ -430,29 +384,8 @@
     text-transform: uppercase;
   }
   .go-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .rel-row { display: flex; gap: 6px; margin-bottom: 8px; }
-  .rel-sel {
-    font-family: var(--mono);
-    font-size: 18px;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    color: var(--text);
-    padding: 4px 6px;
-    outline: none;
-    cursor: pointer;
-  }
-  .rel-sel:focus { border-color: var(--accent); }
 
-  /* ── Home / Zero grid ── */
-  .hzCard {
-    background: var(--bg1);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    padding: 16px;
-  }
-  .hzCard-title { font-size: 14px; color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 12px; }
-  .hz-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  /* ── Small buttons (idle mode, fit, saved state) ── */
   .hz-btn {
     font-family: var(--mono);
     font-size: 15px;
@@ -514,27 +447,6 @@
     transition: all 0.12s;
   }
   .raw-send:hover { color: var(--text); border-color: var(--border2); }
-
-  /* ── Limits indicator ── */
-  .limits-panel {
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .limits-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-  .limits-title { font-size: 14px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; }
-  .cal-badge {
-    font-size: 12px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--dim);
-    padding: 2px 5px;
-    border: 1px solid var(--border);
-    border-radius: 2px;
-  }
-  .cal-badge.ok { color: var(--accent); border-color: rgba(0,229,160,0.3); }
-  .limit-row { display: flex; justify-content: space-between; font-size: 15px; color: var(--dim); margin-bottom: 2px; }
-  .limit-row span:last-child { color: var(--muted); }
 
   /* ── Modal controls (projector dialog) ── */
   .cal-close-btn {
@@ -675,7 +587,8 @@
 
   <!-- TOP BAR -->
   <div class="topbar">
-    <span class="topbar-title">Litho Control</span>
+    <span class="topbar-title">HackerFab IITB Litho Control</span>
+    <span class="topbar-clock" id="clock"></span>
     <div style="display:flex;align-items:center;gap:6px;">
       <div class="status-dot" id="dot"></div>
       <span class="status-text" id="statusText">waiting for the server…</span>
@@ -692,29 +605,29 @@
     <div class="pos-panel" id="posPanel">
       <div class="pos-row">
         <span class="pos-axis">X</span>
-        <div class="pos-bar-wrap"><div class="pos-bar" id="barX"></div></div>
+        <span class="pos-lim min" id="limXmin" title="soft limit, low end">—</span>
+        <button class="pos-jog" id="jogXm" onclick="jog('X',-1)" title="X − one step">◀</button>
         <span class="pos-val" id="posX">—</span>
+        <button class="pos-jog" id="jogXp" onclick="jog('X',1)" title="X + one step">▶</button>
+        <span class="pos-lim max" id="limXmax" title="soft limit, high end">—</span>
       </div>
       <div class="pos-row">
         <span class="pos-axis">Y</span>
-        <div class="pos-bar-wrap"><div class="pos-bar" id="barY"></div></div>
+        <span class="pos-lim min" id="limYmin" title="soft limit, low end">—</span>
+        <button class="pos-jog" id="jogYm" onclick="jog('Y',-1)" title="Y − one step">◀</button>
         <span class="pos-val" id="posY">—</span>
+        <button class="pos-jog" id="jogYp" onclick="jog('Y',1)" title="Y + one step">▶</button>
+        <span class="pos-lim max" id="limYmax" title="soft limit, high end">—</span>
       </div>
       <div class="pos-row">
         <span class="pos-axis">Z</span>
-        <div class="pos-bar-wrap"><div class="pos-bar" id="barZ"></div></div>
+        <span class="pos-lim min" id="limZmin" title="soft limit, low end">—</span>
+        <button class="pos-jog" id="jogZm" onclick="jog('Z',-1)" title="Z − one step">◀</button>
         <span class="pos-val" id="posZ">—</span>
+        <button class="pos-jog" id="jogZp" onclick="jog('Z',1)" title="Z + one step">▶</button>
+        <span class="pos-lim max" id="limZmax" title="soft limit, high end">—</span>
       </div>
-    </div>
-
-    <div class="limits-panel">
-      <div class="limits-hdr">
-        <div class="limits-title">Limits (effective)</div>
-        <span class="cal-badge" id="calBadge">UNCAL</span>
-      </div>
-      <div class="limit-row"><span>X</span><span id="limX">—</span></div>
-      <div class="limit-row"><span>Y</span><span id="limY">—</span></div>
-      <div class="limit-row"><span>Z</span><span id="limZ">—</span></div>
+      <div class="pos-keys">keys: ← → X · ↑ ↓ Y · PgUp PgDn Z (one step each)</div>
     </div>
 
     <div class="step-panel">
@@ -756,7 +669,7 @@
     <div class="state-panel">
       <div class="step-label">Saved State</div>
       <button class="hz-btn" style="width:100%;font-size:14px;" onclick="saveStateToFile()">Export snapshot ↓</button>
-      <div class="state-info">A record only: the firmware keeps position, limits and focus.</div>
+      <div class="state-info">Writes position, limits and focus to a file for your notes; the Uno keeps them itself.</div>
     </div>
 
     <div class="section-hdr" style="border-top:1px solid var(--border);">Serial log</div>
@@ -838,42 +751,6 @@
     <!-- scrollable stage controls -->
     <div class="center-scroll" id="centerScroll">
 
-    <div class="jog-row">
-    <!-- JOG PAD -->
-    <div class="jog-card">
-      <div class="jog-card-title">Jog control</div>
-      <div class="jog-outer">
-
-        <div class="jog-xy">
-          <!-- row 1 -->
-          <div></div>
-          <button class="jbtn" id="jYp" onclick="jog('Y',1)" title="+Y">↑</button>
-          <div></div>
-          <!-- row 2 -->
-          <button class="jbtn" id="jXn" onclick="jog('X',1,'jXn')" title="+X (left)">←</button>
-          <div class="jbtn center-cell">XY</div>
-          <button class="jbtn" id="jXp" onclick="jog('X',-1,'jXp')" title="-X (right)">→</button>
-          <!-- row 3 -->
-          <div></div>
-          <button class="jbtn" id="jYn" onclick="jog('Y',-1)" title="-Y">↓</button>
-          <div></div>
-        </div>
-
-        <div class="jog-z">
-          <div class="jog-z-label">Z</div>
-          <button class="jbtn jbtn-z" id="jZp" onclick="jog('Z',1)" title="+Z">↑</button>
-          <div class="jog-z-track"></div>
-          <button class="jbtn jbtn-z" id="jZn" onclick="jog('Z',-1)" title="-Z">↓</button>
-        </div>
-
-      </div>
-      <div class="kbd-row">
-        <span class="kbd">← →</span><span style="font-size:14px;color:var(--muted);">X</span>
-        <span class="kbd">↑ ↓</span><span style="font-size:14px;color:var(--muted);">Y</span>
-        <span class="kbd">PgUp</span><span class="kbd">PgDn</span><span style="font-size:14px;color:var(--muted);">Z</span>
-      </div>
-    </div>
-
     <!-- Z FOCUS -->
     <div class="mcard">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;">
@@ -905,38 +782,6 @@
         <div class="af-status" id="afStatus"></div>
         <button class="go-btn" style="margin-top:6px;" id="afRunBtn" onclick="runAutofocus()">Run Autofocus</button>
         <button class="af-cancel-btn" id="afCancelBtn" onclick="cancelAutofocus()">Cancel</button>
-      </div>
-    </div>
-
-    </div><!-- /jog-row -->
-
-    <!-- GOTO + RELATIVE -->
-    <div class="twoCol">
-      <div class="mcard">
-        <div class="mcard-title">Go to absolute</div>
-        <div class="axis-row"><span class="axis-lbl">X</span><input class="tinput" type="number" id="goX" placeholder="0" /></div>
-        <div class="axis-row"><span class="axis-lbl">Y</span><input class="tinput" type="number" id="goY" placeholder="0" /></div>
-        <div class="axis-row"><span class="axis-lbl">Z</span><input class="tinput" type="number" id="goZ" placeholder="0" /></div>
-        <button class="go-btn" onclick="gotoAbs()">Move →</button>
-      </div>
-
-      <div class="mcard">
-        <div class="mcard-title">Go to relative</div>
-        <div class="rel-row">
-          <select class="rel-sel" id="relAxis"><option>X</option><option>Y</option><option>Z</option></select>
-          <input class="tinput" type="number" id="relDist" placeholder="±steps" />
-        </div>
-        <button class="go-btn" onclick="gotoRel()">Move →</button>
-      </div>
-    </div>
-
-    <!-- HOME -->
-    <div class="hzCard">
-      <div class="hzCard-title">Go to zero (the homed end; homing: xyz_stage/homing.py)</div>
-      <div class="hz-grid" style="grid-template-columns:repeat(3,1fr);">
-        <button class="hz-btn" onclick="goZero('X')">X → 0</button>
-        <button class="hz-btn" onclick="goZero('Y')">Y → 0</button>
-        <button class="hz-btn" onclick="goZero('Z')">Z → 0</button>
       </div>
     </div>
 
@@ -1142,7 +987,6 @@ function parseLine(line) {
           limits[a+'max'] = +p[i*2+1];
         }
       });
-      updateCalBadge();
       updateLimitsUI();
     }
     return;
@@ -1156,7 +1000,7 @@ function parseLine(line) {
     axisCalibrated = { X: false, Y: false, Z: false };
     calRanges = { X: null, Y: null, Z: null };
     isCalibrated = false;
-    updateCalBadge(); updateLimitsUI();
+    updateLimitsUI();
     return;
   }
 
@@ -1167,14 +1011,14 @@ function parseLine(line) {
       axisCalibrated[ax] = false;
       calRanges[ax] = null;
       isCalibrated = false;
-      updateCalBadge(); updateLimitsUI();
+      updateLimitsUI();
     }
     return;
   }
 
   // CALIBRATED / UNCALIBRATED
-  if (line === 'CALIBRATED')   { isCalibrated = true;  updateCalBadge(); return; }
-  if (line === 'UNCALIBRATED') { isCalibrated = false; updateCalBadge(); return; }
+  if (line === 'CALIBRATED')   { isCalibrated = true;  return; }
+  if (line === 'UNCALIBRATED') { isCalibrated = false; return; }
 
   // FOCUS n  or  FOCUS UNSET
   if (line.startsWith('FOCUS ')) {
@@ -1204,7 +1048,6 @@ function parseLine(line) {
       axisCalibrated[ax] = true;
       limits[ax+'min'] = +nums[0];
       limits[ax+'max'] = +nums[1];
-      updateCalBadge();
       updateLimitsUI();
       log(`${ax} calibrated: ${calRanges[ax].min} → ${calRanges[ax].max}  (${calRanges[ax].max - calRanges[ax].min} steps)`, 'sys');
     }
@@ -1227,7 +1070,7 @@ async function send(cmd) {
 }
 
 // ── Jog ────────────────────────────────────────────────────
-function jog(axis, dir, flashId) {
+function jog(axis, dir) {
   const delta = step * dir;
   send(`J ${axis} ${delta}`);
   if (axisCalibrated[axis]) {
@@ -1236,9 +1079,7 @@ function jog(axis, dir, flashId) {
     pos[axis] += delta;
   }
   updatePosUI();
-  // flashId is passed explicitly when physical button order differs from step sign
-  if (flashId) flash(flashId);
-  else flash('j' + axis + (dir > 0 ? 'p' : 'n'));
+  flash('jog' + axis + (dir > 0 ? 'p' : 'm'));
 }
 
 function flash(id) {
@@ -1246,29 +1087,6 @@ function flash(id) {
   if (!el) return;
   el.classList.add('flash');
   setTimeout(() => el.classList.remove('flash'), 150);
-}
-
-// ── Goto ───────────────────────────────────────────────────
-function gotoAbs() {
-  const x = document.getElementById('goX').value !== '' ? +document.getElementById('goX').value : pos.X;
-  const y = document.getElementById('goY').value !== '' ? +document.getElementById('goY').value : pos.Y;
-  const z = document.getElementById('goZ').value !== '' ? +document.getElementById('goZ').value : pos.Z;
-  send(`A ${Math.round(x)} ${Math.round(y)} ${Math.round(z)}`);
-}
-
-function gotoRel() {
-  const axis = document.getElementById('relAxis').value;
-  const dist = Math.round(+document.getElementById('relDist').value || 0);
-  send(`J ${axis} ${dist}`);
-}
-
-// Go to 0 on one axis, keep the others. 0 is the homed end of the axis
-// (its limit switch, or the point zeroed with homing.py --set-zero).
-function goZero(axis) {
-  const x = axis === 'X' ? 0 : pos.X;
-  const y = axis === 'Y' ? 0 : pos.Y;
-  const z = axis === 'Z' ? 0 : pos.Z;
-  send(`A ${x} ${y} ${z}`);
 }
 
 // ── Step ───────────────────────────────────────────────────
@@ -1321,41 +1139,16 @@ function renderIdleMode() {
 function updatePosUI() {
   ['X','Y','Z'].forEach(a => {
     document.getElementById('pos'+a).textContent = pos[a];
-    if (axisCalibrated[a]) {
-      const range = limits[a+'max'] - limits[a+'min'] || 1;
-      const pct = ((pos[a] - limits[a+'min']) / range * 100).toFixed(1);
-      document.getElementById('bar'+a).style.width = Math.max(0, Math.min(100, pct)) + '%';
-    } else {
-      document.getElementById('bar'+a).style.width = '0%';
-    }
   });
 }
 
+// The soft limits either side of each position ("—" for an axis without).
 function updateLimitsUI() {
   ['X','Y','Z'].forEach(a => {
-    const el = document.getElementById('lim'+a);
-    if (axisCalibrated[a]) {
-      el.textContent = limits[a+'min'] + ' → ' + limits[a+'max'];
-    } else {
-      el.textContent = '—';
-    }
+    document.getElementById('lim'+a+'min').textContent = axisCalibrated[a] ? limits[a+'min'] : '—';
+    document.getElementById('lim'+a+'max').textContent = axisCalibrated[a] ? limits[a+'max'] : '—';
   });
   updatePosUI();
-}
-
-function updateCalBadge() {
-  const b = document.getElementById('calBadge');
-  const anyDone = axisCalibrated.X || axisCalibrated.Y || axisCalibrated.Z;
-  if (isCalibrated) {
-    b.textContent = 'CALIBRATED'; b.className = 'cal-badge ok';
-  } else if (anyDone) {
-    b.textContent = 'PARTIAL'; b.className = 'cal-badge';
-    b.style.color = 'var(--warn)'; b.style.borderColor = 'rgba(240,165,0,0.4)';
-    return;
-  } else {
-    b.textContent = 'UNCAL'; b.className = 'cal-badge';
-  }
-  b.style.color = ''; b.style.borderColor = '';
 }
 
 // ── Focus ──────────────────────────────────────────────────
@@ -1409,8 +1202,8 @@ document.addEventListener('keydown', e => {
   if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
   if (afRunning) return;
   // ArrowLeft/Right are swapped for X to match physical stage orientation
-  if (e.key === 'ArrowLeft')  { e.preventDefault(); jog('X', 1,'jXn'); }
-  if (e.key === 'ArrowRight') { e.preventDefault(); jog('X',-1,'jXp'); }
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); jog('X', 1); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); jog('X',-1); }
   if (e.key === 'ArrowUp')    { e.preventDefault(); jog('Y', 1); }
   if (e.key === 'ArrowDown')  { e.preventDefault(); jog('Y',-1); }
   if (e.key === 'PageUp')     { e.preventDefault(); jog('Z', 1); }
@@ -1690,9 +1483,11 @@ function onCamImgError() {
 
 function _camStatsText(c) {
   if (!c.connected) return c.error || 'camera not open';
-  if (c.deflicker === false) return `${c.in_fps} fps · raw (deflicker off) · mean ${c.mean}`;
-  return `${c.in_fps} fps in → ${c.shown_fps} shown · mean ${c.mean} / cutoff ${c.cutoff}` +
-         (c.calibration ? ' fixed' : ' live') + ` · forced ${c.forced}`;
+  const f = (v, w, d = 1) => Number(v).toFixed(d).padStart(w);
+  if (c.deflicker === false) return `${f(c.in_fps, 4)} fps · raw (deflicker off) · mean ${f(c.mean, 5)}`;
+  return `${f(c.in_fps, 4)} fps in → ${f(c.shown_fps, 4)} shown · mean ${f(c.mean, 5)}` +
+         ` / cutoff ${f(c.cutoff, 5)}` + (c.calibration ? ' fixed' : ' live') +
+         ` · forced ${f(c.forced, 4, 0)}`;
 }
 
 function _camConnect(serverConfig) {
@@ -1844,11 +1639,22 @@ async function showPattern(name) {
   } catch (e) { log('Projector: ' + e.message, 'err'); }
 }
 
+// ── Clock ──────────────────────────────────────────────────
+// Local time as YYYY-MM-DD_HH-MM-SS (24 h).
+function updateClock() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  const t = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_` +
+            `${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
+  const el = document.getElementById('clock');
+  if (el.textContent !== t) el.textContent = t;
+}
+
 // ── Init ───────────────────────────────────────────────────
+updateClock();
+setInterval(updateClock, 200);
 log('Litho control ready — the stage connects automatically.', 'sys');
 startStageEvents();
 updateLimitsUI();
-updateCalBadge();
 updateFocusUI();
 _initProjDrop();
 

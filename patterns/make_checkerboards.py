@@ -4,8 +4,9 @@
     python patterns/make_checkerboards.py 50 128 256      # any square sizes
     python patterns/make_checkerboards.py 100 --size 1920x1080
 
-Each one is saved as patterns/checker_<N>px.png (lossless, 8-bit grey), with
-the top-left square white. Load one in the UI's Projector dialog at
+Each one is saved as patterns/checker_<NNNN>px.png, the size zero-padded to
+four digits so the files sort by size (checker_0001px.png ... checker_0300px.png):
+lossless, 8-bit grey, top-left square white. Load one in the UI's Projector dialog at
 "1:1 pixels" to show it unscaled. The squares come from
 projector/display.py's make_pattern("checkerN"), the same as the test
 patterns.
@@ -37,7 +38,7 @@ def main():
             p.error(f"square size must be positive, got {n}")
         # make_pattern starts with a black square; invert so the top-left is white
         img = 255 - make_pattern(f"checker{n}", width, height)
-        path = os.path.join(args.out, f"checker_{n}px.png")
+        path = os.path.join(args.out, f"checker_{n:04d}px.png")
         cv2.imwrite(path, img)
         print(f"{path}  {width}x{height}, {n} px squares "
               f"({width / n:g} x {height / n:g} squares)")

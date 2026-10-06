@@ -47,13 +47,20 @@ Then:
 
 | area | shows |
 | --- | --- |
-| **left column** | position, soft limits, step size, speed, motors between moves, a state snapshot export, and the **serial log** with a raw-command box at the bottom |
+| **top bar** | "HackerFab IITB Litho Control", the local time as `YYYY-MM-DD_HH-MM-SS` (24 h), stage status, **Projector**, **Release / Connect stage** |
+| **left column** | **position**: one row per axis, `low limit ◀ position ▶ high limit` (◀ / ▶ move one step down / up; "—" for an axis without limits), then step size, speed, motors between moves, a state snapshot export, and the **serial log** with a raw-command box at the bottom |
 | **PROJECTOR** pane | a screen capture of the projector's display, 1280 px wide, about 5 fps. It shows what the projector is really showing, including the desktop or anything that pops up over the pattern. The **mouse pointer** is drawn in when it's on the projector's screen (screen captures leave it out) |
 | **CAMERA** pane | the deflickered camera feed at full resolution, 1936×1216. The header shows fps in → shown, the frame mean against the keep cutoff, and how many frames were forced |
 | controls under the panes | exposure (µs), keep ≥ (fraction of the top), max hold (s): each is sent when you press Enter or click away. **Deflicker: on/off** (off = every camera frame, flicker included). **Calibrate deflicker**: see below. **White**: projects `patterns/white_4K.jpg` |
-| under the panes | **Jog** with **Z focus** (set / go / autofocus sweep) beside it, then go to absolute / relative, and **go to zero** per axis. Zero is the homed end (see [xyz_stage](../xyz_stage/README.md#homing)) |
+| under the panes | **Z focus**: set / go / autofocus sweep |
 
 Text is white at 1.5× litho-ui's sizes, laid out for a 1920×1080 screen.
+Digits are all one width, and changing numbers (camera stats, clock) are
+padded to a fixed width, so the text around them doesn't shift.
+
+**Keys** (anywhere outside a text field): ← → move X, ↑ ↓ move Y, PgUp/PgDn
+move Z, one step each. On X, ← is +X (it moves the stage left), so it lights
+the ▶ button.
 
 ## Why a Python server, not a JavaScript one
 
@@ -177,6 +184,21 @@ Projector calls return once the change is on screen.
 - **Only one server at a time**, because it uses port 8765.
 
 ## Log
+
+### 2026-10-06 — position rows with limits and ◀ ▶; jog, go-to and limits panels removed; title and clock
+
+- **Position:** each axis is now one row, `low limit ◀ position ▶ high limit`,
+  with no progress bar.
+- **Removed as redundant:** the Jog control card, the Limits (effective)
+  panel and its CALIBRATED badge, Go to absolute, Go to relative and Go to
+  zero. Z Focus now takes the full width.
+- **Top bar:** "HackerFab IITB Litho Control" and a `YYYY-MM-DD_HH-MM-SS`
+  clock.
+- **Fixed-width numbers:** tabular digits everywhere, and the camera stats
+  are padded.
+- **Saved State note** reworded.
+- **Checked:** the page script passes `node --check`, and a headless Firefox
+  screenshot against the running server showed the new layout.
 
 ### 2026-10-06 — "connected on COM4" in the terminal, "disconnected" in the UI
 
