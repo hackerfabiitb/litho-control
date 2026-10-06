@@ -39,20 +39,39 @@ once and keeps retrying every 3 s:
 
 Then:
 - **Stage:** nothing to do. The server finds the Uno by its USB ID (with
-  `xyz_stage/find_arduino.py`) and connects by itself. The top bar shows
-  `connected · COM4`.
-- **Projector:** click **Image…** (under the panes) to load an image and project it.
+  `xyz_stage/find_arduino.py`) and connects by itself. The STAGE panel
+  shows `connected · COM4`.
+- **Projector:** click **Image…** in the PROJECTOR panel to load an image and
+  project it.
 
 ## Layout
 
+Four columns; the last two are split into a top half (projector) and a
+bottom half (camera):
+
+```
+| info      | STAGE            | PROJECTOR panel | projector preview |
+| title     | status, Release  | status          |                   |
+| clock     | Z focus          | White, Image…   |                   |
+| saved     | position         |-----------------|-------------------|
+|  state    | step size        | CAMERA panel    | camera feed       |
+| serial    | step delay       | status, stats   |                   |
+|  log      | motors           | exposure, keep, |                   |
+|           |                  | max hold,       |                   |
+|           |                  | deflicker       |                   |
+```
+
 | area | shows |
 | --- | --- |
-| **top bar** | "HackerFab IITB Litho Control", the local time as `YYYY-MM-DD_HH-MM-SS` (24 h), the **stage** status (`stage: connected · COM4` = the server's serial link to the Uno), **Release / Connect stage** |
-| **left column** | **position**: one row per axis, `limit min [‹ position ›] limit max` ("—" for an axis without limits). ‹ › move one step; typing a position and pressing Enter moves that axis there (clamped to its limits). Then step size (presets, and a field showing the current step), step delay (µs per step, lower = faster), motors between moves, a state snapshot export, and the **serial log** with a raw-command box at the bottom |
-| **PROJECTOR** pane | a screen capture of the projector's display, 1280 px wide, about 5 fps. It shows what the projector is really showing, including the desktop or anything that pops up over the pattern. The **mouse pointer** is drawn in when it's on the projector's screen (screen captures leave it out) |
-| **CAMERA** pane | the deflickered camera feed at full resolution, 1936×1216. The header shows fps in → shown, the frame mean against the keep cutoff, and how many frames were forced |
-| controls under the panes | exposure (µs, ‹ › ±50), keep ≥ (fraction of the top, ±0.02), max hold (s, ±0.1). **Deflicker: on/off** (off = every camera frame, flicker included). **Calibrate deflicker**: see below. **White**: projects `patterns/white_4K.jpg`. **Image…**: the projector dialog |
-| under the panes | **Z focus**: set / go / autofocus sweep |
+| **info** (full height, left) | "HackerFab IITB Litho Control", the local time as `YYYY-MM-DD_HH-MM-SS` (24 h), a state snapshot export, and the **serial log** with a raw-command box at the bottom |
+| **STAGE** (full height) | the stage status (`connected · COM4`: the server's serial link to the Uno) with **Release / Connect**. Below it: **Z focus** (set / go / autofocus sweep); **position**, one row per axis, `limit min [‹ position ›] limit max` ("—" for an axis without limits; ‹ › move one step; typing a position and pressing Enter moves that axis there, clamped to its limits); step size (presets, and a field showing the current step); step delay (µs per step, lower = faster); motors between moves |
+| **PROJECTOR** panel | whether the projector's display was found and what it shows; **White** (`patterns/white_4K.jpg`); **Image…** (the projector dialog) |
+| **projector preview** (top right) | a screen capture of the projector's display, 1280 px wide, about 5 fps. It shows what the projector is really showing, including the desktop or anything that pops up over the pattern. The **mouse pointer** is drawn in when it's on the projector's screen (screen captures leave it out) |
+| **CAMERA** panel | camera status and Connect/Disconnect (for the page's video streams only); fps in → shown, mean / cutoff (fixed or live), forced; exposure (µs, ‹ › ±50), keep ≥ (fraction of the top, ±0.02), max hold (s, ±0.1); **Deflicker: on/off** (off = every camera frame, flicker included); **Calibrate deflicker** (see below) |
+| **camera feed** (bottom right) | the deflickered camera feed at full resolution, 1936×1216 |
+
+At a maximised 1920×1080 Firefox window nothing scrolls. On a shorter
+screen the STAGE column scrolls.
 
 **Number fields** all work the same way (a grey box with ‹ › at its ends):
 - ‹ › step the value and apply it at once;
@@ -86,7 +105,7 @@ the field's › arrow.
 
 ## Projecting
 
-In the projector dialog (**Image…** under the panes):
+In the projector dialog (**Image…** in the PROJECTOR panel):
 - **Load an image** (PNG, JPG, BMP or TIFF), then click **Project Image**.
 - **Fit modes:**
   - **1:1 pixels** (default): one image pixel per projector input pixel,
@@ -172,11 +191,11 @@ Projector calls return once the change is on screen.
   `POS -704 648 9038` for `POS -17004 6848 9038`).
 - **A reloaded page** gets position, limits, calibration and focus from the
   server's cache, without querying the firmware.
-- **Release stage** (top right) releases COM4, e.g. for `arduino-cli upload`.
-  The top bar then says `released · click Connect stage`, and the terminal
-  prints `[stage] releasing COM4 …`. **Connect stage** takes it back, which
-  resets the Uno again. (The camera's own Disconnect, in the camera header,
-  only stops the page's video streams.)
+- **Release** (STAGE panel) releases COM4, e.g. for `arduino-cli upload`.
+  The status then says `released · click Connect`, and the terminal prints
+  `[stage] releasing COM4 …`. **Connect** takes it back, which resets the Uno
+  again. (The CAMERA panel's Disconnect only stops the page's video
+  streams.)
 
 ## Things to know
 
@@ -190,6 +209,22 @@ Projector calls return once the change is on screen.
 - **Only one server at a time**, because it uses port 8765.
 
 ## Log
+
+### 2026-10-07 — layout in panels: info | STAGE | projector & camera panels | previews
+
+- **Layout:** as drawn under Layout. The top bar is gone: the title and clock
+  are in the info column, and the stage status and Release / Connect are in
+  STAGE.
+  - The camera stats are three lines in the CAMERA panel.
+  - The previews fill their quadrants.
+  - The stage button now reads **Release** / **Connect**, since it sits in
+    the STAGE panel.
+- **Checked:**
+  - tags balance, and every element ID the script uses is present exactly
+    once; `node --check` passes;
+  - the Selenium field tests pass again;
+  - measured in headless Firefox at a 1920×1080 window (995 px inner):
+    no column overflows. At 910 px inner, only STAGE scrolls.
 
 ### 2026-10-06 — one number field everywhere; Projector button moved; "stage:" label
 

@@ -175,7 +175,7 @@ class Stage(threading.Thread):
     def disconnect(self, reason="Disconnect in the UI"):
         if self.want:
             print(f"[stage] releasing {self.port or 'the port'} ({reason}); "
-                  f"click Connect stage to take it back", flush=True)
+                  f"click Connect (STAGE panel) to take it back", flush=True)
         self.want = False
         deadline = time.time() + 2
         while self.ser is not None and time.time() < deadline:

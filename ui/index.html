@@ -30,25 +30,43 @@
 
   html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 20px; font-variant-numeric: tabular-nums; }
 
-  /* ── Layout ── */
+  /* ── Layout: info | stage | projector & camera panels | previews ── */
   .shell {
     display: grid;
-    grid-template-rows: 44px 1fr;
-    grid-template-columns: 400px 1fr;
+    grid-template-columns: 300px 420px 330px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
     height: 100vh;
-    gap: 0;
   }
+  .col { display: flex; flex-direction: column; min-height: 0; min-width: 0;
+         border-right: 1px solid var(--border); }
+  .info-col  { grid-column: 1; grid-row: 1 / 3; }
+  .stage-col { grid-column: 2; grid-row: 1 / 3; overflow-y: auto; }
+  .proj-ctl  { grid-column: 3; grid-row: 1; border-bottom: 1px solid var(--border); overflow-y: auto; }
+  .cam-ctl   { grid-column: 3; grid-row: 2; overflow-y: auto; }
+  .view      { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg1); }
+  .proj-view { grid-column: 4; grid-row: 1; border-bottom: 1px solid var(--border); }
+  .cam-view  { grid-column: 4; grid-row: 2; }
+  .info-head { padding: 14px; border-bottom: 1px solid var(--border); background: var(--bg1);
+               display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .panel-status { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+                  border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .ctl-buttons { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px; }
+  .cam-ctl .ctl-buttons { padding: 4px 0 0; }
+  .subpanel { margin: 12px 14px; padding: 12px; border: 1px solid var(--border);
+              border-radius: 3px; background: var(--bg1); flex-shrink: 0; }
+  .sub-hdr { padding: 4px 14px 0; margin-bottom: 0; }
+  .cam-stats { font-size: 15px; color: var(--dim); white-space: pre; padding: 10px 14px;
+               border-bottom: 1px solid var(--border); line-height: 1.5; flex-shrink: 0; }
+  .conn-btn.small { font-size: 14px; padding: 4px 10px; }
+  .panel-status .status-text, .panel-status .cam-status-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .conn-btn.small { white-space: nowrap; letter-spacing: 0.05em; flex-shrink: 0; }
+  .stage-col .go-btn { font-size: 15px; letter-spacing: 0.05em; padding: 6px; white-space: nowrap; }
+  .stage-col .af-section { margin-top: 10px; padding-top: 10px; }
+  .stage-col .af-row { margin-bottom: 6px; }
+  .stage-col .pos-panel { padding: 8px 14px 10px; gap: 6px; }
+  .stage-col .step-panel, .stage-col .speed-panel, .stage-col .idle-panel { padding: 10px 14px; }
+  .unit { font-size: 14px; color: var(--dim); }
 
-  /* ── Topbar ── */
-  .topbar {
-    grid-column: 1 / -1;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 0 20px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg1);
-  }
   .topbar-title {
     font-family: var(--mono);
     font-size: 17px;
@@ -58,7 +76,6 @@
     color: var(--accent);
   }
   .topbar-clock { font-size: 17px; color: var(--text); white-space: pre; }
-  .topbar-sep { flex: 1; }
   .status-dot {
     width: 7px; height: 7px; border-radius: 50%;
     background: var(--muted);
@@ -86,59 +103,6 @@
   .conn-btn:disabled { opacity: 0.35; cursor: not-allowed; }
   .conn-btn.cal-trigger:hover:not(:disabled) { border-color: var(--warn); color: var(--warn); }
 
-  /* ── Left Panel ── */
-  .left {
-    grid-row: 2;
-    border-right: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-    min-height: 0;
-  }
-
-  /* ── Center Panel ── */
-  .center {
-    grid-row: 2;
-    display: grid;
-    grid-template-rows: auto 1fr;
-    overflow: hidden;
-    transition: opacity 0.2s;
-  }
-  .center-scroll {
-    overflow-y: auto;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-  .center-scroll::-webkit-scrollbar { width: 4px; }
-  .center-scroll::-webkit-scrollbar-track { background: transparent; }
-  .center-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-  /* ── Camera section ── */
-  .cam-section {
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    background: var(--bg1);
-    flex-shrink: 0;
-  }
-  .cam-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg1);
-  }
-  .cam-title {
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--muted);
-    flex: 1;
-  }
   .cam-dot {
     width: 7px; height: 7px; border-radius: 50%;
     background: var(--muted);
@@ -148,13 +112,6 @@
   .cam-dot.on  { background: var(--accent); box-shadow: 0 0 5px var(--accent); }
   .cam-dot.err { background: var(--danger); }
   .cam-status-text { font-size: 15px; color: var(--muted); }
-  .pane-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1px;
-    background: var(--border);
-  }
-  .pane { display: flex; flex-direction: column; background: var(--bg1); min-width: 0; }
   .pane-label {
     display: flex; justify-content: space-between; gap: 8px;
     padding: 4px 10px; font-size: 14px; letter-spacing: 0.15em;
@@ -166,8 +123,8 @@
     background: #080808;
     position: relative;
     overflow: hidden;
-    flex-shrink: 0;
-    height: min(42vh, 460px);
+    flex: 1;
+    min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -199,10 +156,9 @@
   }
   .cam-controls {
     display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 8px 14px;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 14px;
     flex-shrink: 0;
   }
   .cam-ctrl-group {
@@ -211,6 +167,7 @@
     gap: 6px;
   }
   .cam-ctrl-label {
+    width: 100px;
     font-size: 14px;
     color: var(--muted);
     letter-spacing: 0.12em;
@@ -584,7 +541,7 @@
     border-top: 1px solid var(--border);
   }
   .af-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-  .af-row label { font-size: 14px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
+  .af-row label { width: 90px; font-size: 14px; color: var(--muted); letter-spacing: 0.1em; white-space: nowrap; }
   .af-progress-wrap {
     height: 3px; background: var(--bg3); border-radius: 2px;
     overflow: hidden; margin-bottom: 6px; display: none;
@@ -604,22 +561,65 @@
 
 <div class="shell">
 
-  <!-- TOP BAR -->
-  <div class="topbar">
-    <span class="topbar-title">HackerFab IITB Litho Control</span>
-    <span class="topbar-clock" id="clock"></span>
-    <div style="display:flex;align-items:center;gap:6px;">
-      <div class="status-dot" id="dot"></div>
-      <span class="status-text" id="statusText" title="The stage: the server's serial link to the Uno">stage: waiting for the server…</span>
+  <!-- INFO: title, clock, saved state, serial log (full height, left) -->
+  <div class="col info-col">
+    <div class="info-head">
+      <div class="topbar-title">HackerFab IITB<br>Litho Control</div>
+      <div class="topbar-clock" id="clock"></div>
     </div>
-    <div class="topbar-sep"></div>
-    <button class="conn-btn" id="connBtn" onclick="toggleConnect()" title="Release or take back the stage's COM port (e.g. to flash firmware)">Connect stage</button>
+    <div class="state-panel">
+      <div class="step-label">Saved State</div>
+      <button class="hz-btn" style="width:100%;font-size:14px;" onclick="saveStateToFile()">Export snapshot ↓</button>
+      <div class="state-info">Writes position, limits and focus to a file for your notes; the Uno keeps them itself.</div>
+    </div>
+
+    <div class="section-hdr" style="border-top:1px solid var(--border);">Serial log</div>
+    <div class="log-wrap">
+      <div class="log" id="log"></div>
+    </div>
+    <div class="raw-row">
+      <input class="tinput" type="text" id="rawCmd" placeholder="raw command…" style="flex:1;" onkeydown="if(event.key==='Enter')sendRaw()" />
+      <button class="raw-send" onclick="sendRaw()">Send</button>
+      <button class="raw-send" onclick="clearLog()">Clr</button>
+    </div>
+
   </div>
 
-  <!-- LEFT PANEL -->
-  <div class="left">
-    <div class="section-hdr">Position</div>
+  <!-- STAGE (full height) -->
+  <div class="col stage-col">
+    <div class="section-hdr">Stage</div>
+    <div class="panel-status">
+      <div class="status-dot" id="dot"></div>
+      <span class="status-text" id="statusText" title="The server's serial link to the Uno">waiting for the server…</span>
+      <div class="cam-sep"></div>
+      <button class="conn-btn small" id="connBtn" onclick="toggleConnect()" title="Release or take back the stage's COM port (e.g. to flash firmware)">Connect</button>
+    </div>
 
+    <!-- Z FOCUS -->
+    <div class="subpanel">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;">
+        <div class="step-label" style="margin:0;">Z Focus</div>
+        <span id="focusPosLabel" style="font-size:15px;color:var(--muted);">not set</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button class="go-btn" style="margin-top:0;" onclick="setFocus()">Set focus here</button>
+        <button class="go-btn" style="margin-top:0;" id="goFocusBtn" onclick="goFocus()" disabled>Go to focus</button>
+      </div>
+      <div class="af-section">
+        <div class="step-label" style="margin-bottom:8px;">Autofocus (Z sweep)</div>
+        <div class="af-row"><label>RANGE ±</label><div class="numfield" data-step="50" data-min="10" style="width:120px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afRange" value="500" /><button class="nf-btn" tabindex="-1">›</button></div><span class="unit">steps</span></div>
+        <div class="af-row"><label>STEP</label><div class="numfield" data-step="10" data-min="1" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afStep" value="50" /><button class="nf-btn" tabindex="-1">›</button></div><span class="unit">steps</span></div>
+        <div class="af-row"><label>SETTLE</label><div class="numfield" data-step="50" data-min="50" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afSettle" value="300" /><button class="nf-btn" tabindex="-1">›</button></div><span class="unit">ms per move</span></div>
+        <div class="af-progress-wrap" id="afProgressWrap">
+          <div class="af-progress-bar" id="afProgressBar"></div>
+        </div>
+        <div class="af-status" id="afStatus"></div>
+        <button class="go-btn" style="margin-top:6px;" id="afRunBtn" onclick="runAutofocus()">Run Autofocus</button>
+        <button class="af-cancel-btn" id="afCancelBtn" onclick="cancelAutofocus()">Cancel</button>
+      </div>
+    </div>
+
+    <div class="step-label sub-hdr">Position</div>
     <div class="pos-panel" id="posPanel">
       <div class="pos-row">
         <span></span><span class="pos-head min">limit min</span><span></span><span class="pos-head max">limit max</span>
@@ -678,39 +678,26 @@
       <div class="state-info">Moves are powered either way. Use Hold if an axis drifts at rest.</div>
     </div>
 
-    <div class="state-panel">
-      <div class="step-label">Saved State</div>
-      <button class="hz-btn" style="width:100%;font-size:14px;" onclick="saveStateToFile()">Export snapshot ↓</button>
-      <div class="state-info">Writes position, limits and focus to a file for your notes; the Uno keeps them itself.</div>
-    </div>
-
-    <div class="section-hdr" style="border-top:1px solid var(--border);">Serial log</div>
-    <div class="log-wrap">
-      <div class="log" id="log"></div>
-    </div>
-    <div class="raw-row">
-      <input class="tinput" type="text" id="rawCmd" placeholder="raw command…" style="flex:1;" onkeydown="if(event.key==='Enter')sendRaw()" />
-      <button class="raw-send" onclick="sendRaw()">Send</button>
-      <button class="raw-send" onclick="clearLog()">Clr</button>
-    </div>
-
   </div>
 
-  <!-- CENTER PANEL -->
-  <div class="center" id="centerPanel">
+  <!-- PROJECTOR panel (left of the projector preview) -->
+  <div class="col ctl proj-ctl">
+    <div class="section-hdr">Projector</div>
+    <div class="panel-status">
+      <div class="cam-dot" id="projPanelDot"></div>
+      <span class="cam-status-text" id="projPaneInfo">—</span>
+    </div>
+    <div class="ctl-buttons">
+      <button class="cam-apply-btn" onclick="showPattern('white_4K.jpg')"
+              title="Project patterns/white_4K.jpg (all white)">White</button>
+      <button class="cam-apply-btn" onclick="openProjModal()"
+              title="Load an image and project it (fit modes, Blank, Close)">Image…</button>
+    </div>
+  </div>
 
-    <!-- PROJECTOR + CAMERA PANES -->
-    <div class="cam-section">
-      <div class="cam-header">
-        <div class="cam-dot" id="camDot"></div>
-        <span class="cam-title">Projector &nbsp;·&nbsp; Camera (deflickered)</span>
-        <span class="cam-status-text" id="camStatusText">not connected</span>
-        <div class="cam-sep"></div>
-        <button class="conn-btn" id="camConnBtn" onclick="toggleCamera()" style="font-size:15px;padding:4px 12px;">Connect</button>
-      </div>
-      <div class="pane-grid">
-        <div class="pane">
-          <div class="pane-label"><span>PROJECTOR</span><span id="projPaneInfo">—</span></div>
+  <!-- PROJECTOR preview (top right) -->
+  <div class="view proj-view">
+    <div class="pane-label"><span>PROJECTOR</span><span>what the projector shows</span></div>
           <div class="cam-feed-wrap">
             <img id="projMirrorImg" src="" alt="" style="display:none;" />
             <div class="cam-placeholder" id="projMirrorPlaceholder">
@@ -718,9 +705,35 @@
               <div>What the projector is showing, captured from its display</div>
             </div>
           </div>
-        </div>
-        <div class="pane">
-          <div class="pane-label"><span>CAMERA</span><span id="camPaneInfo">—</span></div>
+  </div>
+
+  <!-- CAMERA panel (left of the camera feed) -->
+  <div class="col ctl cam-ctl">
+    <div class="section-hdr">Camera</div>
+    <div class="panel-status">
+      <div class="cam-dot" id="camDot"></div>
+      <span class="cam-status-text" id="camStatusText">not connected</span>
+      <div class="cam-sep"></div>
+      <button class="conn-btn small" id="camConnBtn" onclick="toggleCamera()">Connect</button>
+    </div>
+    <div class="cam-stats" id="camPaneInfo">—</div>
+    <div class="cam-controls">
+      <div class="cam-ctrl-group"><span class="cam-ctrl-label">EXPOSURE</span><div class="numfield" data-step="50" data-min="34" data-max="1000000" style="width:130px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="camExposure" value="400" onchange="setCamConfig('exposure_us', this)" /><button class="nf-btn" tabindex="-1">›</button></div><span class="cam-ctrl-unit">µs</span></div>
+      <div class="cam-ctrl-group"><span class="cam-ctrl-label">KEEP ≥</span><div class="numfield" data-step="0.02" data-min="0" data-max="1" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="camKeepFrac" value="0.80" onchange="setCamConfig('keep_frac', this)" /><button class="nf-btn" tabindex="-1">›</button></div><span class="cam-ctrl-unit" id="camTopLabel">× top</span></div>
+      <div class="cam-ctrl-group"><span class="cam-ctrl-label">MAX HOLD</span><div class="numfield" data-step="0.1" data-min="0" data-max="10" style="width:100px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="camMaxHold" value="0.5" onchange="setCamConfig('max_hold', this)" /><button class="nf-btn" tabindex="-1">›</button></div><span class="cam-ctrl-unit">s</span></div>
+      <div class="ctl-buttons">
+        <button class="cam-apply-btn" id="deflickerBtn" onclick="toggleDeflicker()"
+                title="Off: show every camera frame, flicker included">Deflicker: on</button>
+        <button class="cam-apply-btn" id="calDeflickerBtn" onclick="calibrateDeflicker()"
+                title="Projects patterns/calibrate_deflicker.png for 5 s, sets the cutoff from it and keeps it fixed">Calibrate deflicker</button>
+      </div>
+      <span class="cam-err-text" id="camErrText"></span>
+    </div>
+  </div>
+
+  <!-- CAMERA feed (bottom right) -->
+  <div class="view cam-view">
+    <div class="pane-label"><span>CAMERA</span><span>deflickered feed</span></div>
           <div class="cam-feed-wrap" id="camFeedWrap">
             <img id="camImg" src="" alt="" style="display:none;" onerror="onCamImgError()" />
             <div class="cam-placeholder" id="camPlaceholder">
@@ -729,75 +742,7 @@
               <div style="font-size:15px;color:var(--dim);">Close the live viewer and pylon Viewer — the camera allows one client</div>
             </div>
           </div>
-        </div>
-      </div>
-      <div class="cam-controls">
-        <div class="cam-ctrl-group">
-          <span class="cam-ctrl-label">EXPOSURE</span>
-          <div class="numfield" data-step="50" data-min="34" data-max="1000000" style="width:130px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="camExposure" value="400" onchange="setCamConfig('exposure_us', this)" /><button class="nf-btn" tabindex="-1">›</button></div>
-          <span class="cam-ctrl-unit">µs</span>
-        </div>
-        <div class="cam-ctrl-group">
-          <span class="cam-ctrl-label">KEEP ≥</span>
-          <div class="numfield" data-step="0.02" data-min="0" data-max="1" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="camKeepFrac" value="0.80" onchange="setCamConfig('keep_frac', this)" /><button class="nf-btn" tabindex="-1">›</button></div>
-          <span class="cam-ctrl-unit" id="camTopLabel">× top</span>
-        </div>
-        <div class="cam-ctrl-group">
-          <span class="cam-ctrl-label">MAX HOLD</span>
-          <div class="numfield" data-step="0.1" data-min="0" data-max="10" style="width:100px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="camMaxHold" value="0.5" onchange="setCamConfig('max_hold', this)" /><button class="nf-btn" tabindex="-1">›</button></div>
-          <span class="cam-ctrl-unit">s</span>
-        </div>
-        <button class="cam-apply-btn" id="deflickerBtn" onclick="toggleDeflicker()"
-                title="Off: show every camera frame, flicker included">Deflicker: on</button>
-        <button class="cam-apply-btn" id="calDeflickerBtn" onclick="calibrateDeflicker()"
-                title="Projects patterns/calibrate_deflicker.png for 5 s, sets the cutoff from it and keeps it fixed">Calibrate deflicker</button>
-        <button class="cam-apply-btn" onclick="showPattern('white_4K.jpg')"
-                title="Project patterns/white_4K.jpg (all white)">White</button>
-        <button class="cam-apply-btn" onclick="openProjModal()"
-                title="Load an image and project it (fit modes, Blank, Close)">Image…</button>
-        <span class="cam-err-text" id="camErrText"></span>
-      </div>
-    </div>
-
-    <!-- scrollable stage controls -->
-    <div class="center-scroll" id="centerScroll">
-
-    <!-- Z FOCUS -->
-    <div class="mcard">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;">
-        <div class="mcard-title" style="margin:0;">Z Focus</div>
-        <span id="focusPosLabel" style="font-size:15px;color:var(--muted);">not set</span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <button class="go-btn" style="margin-top:0;" onclick="setFocus()">Set focus here</button>
-        <button class="go-btn" style="margin-top:0;" id="goFocusBtn" onclick="goFocus()" disabled>Go to focus</button>
-      </div>
-
-      <div class="af-section">
-        <div class="mcard-title" style="margin-bottom:8px;">Autofocus (Z sweep)</div>
-        <div class="af-row">
-          <label>RANGE ±</label>
-          <div class="numfield" data-step="50" data-min="10" style="width:120px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afRange" value="500" /><button class="nf-btn" tabindex="-1">›</button></div>
-          <label>STEP</label>
-          <div class="numfield" data-step="10" data-min="1" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afStep" value="50" /><button class="nf-btn" tabindex="-1">›</button></div>
-          <label style="color:var(--dim);">steps</label>
-        </div>
-        <div class="af-row" style="margin-bottom:4px;">
-          <label>SETTLE</label>
-          <div class="numfield" data-step="50" data-min="50" style="width:110px"><button class="nf-btn" tabindex="-1">‹</button><input type="text" inputmode="decimal" id="afSettle" value="300" /><button class="nf-btn" tabindex="-1">›</button></div>
-          <label style="color:var(--dim);">ms after each move</label>
-        </div>
-        <div class="af-progress-wrap" id="afProgressWrap">
-          <div class="af-progress-bar" id="afProgressBar"></div>
-        </div>
-        <div class="af-status" id="afStatus"></div>
-        <button class="go-btn" style="margin-top:6px;" id="afRunBtn" onclick="runAutofocus()">Run Autofocus</button>
-        <button class="af-cancel-btn" id="afCancelBtn" onclick="cancelAutofocus()">Cancel</button>
-      </div>
-    </div>
-
-    </div><!-- /center-scroll -->
-  </div><!-- /center -->
+  </div>
 
 </div>
 
@@ -902,7 +847,7 @@ let stageEvents = null;
 async function toggleConnect() {
   const releasing = connected;
   const path = releasing ? '/stage/disconnect' : '/stage/connect';
-  log(releasing ? 'Releasing the stage COM port (click Connect stage to take it back)…'
+  log(releasing ? 'Releasing the stage COM port (click Connect to take it back)…'
                 : 'Searching for the Uno…', 'sys');
   try {
     const r = await fetch(path, { method: 'POST', signal: AbortSignal.timeout(5000) });
@@ -916,7 +861,7 @@ function applyStageStatus(s) {
   const was = connected;
   connected = s.connected;
   if (s.connected)     setStatus('connected · ' + s.port, true);
-  else if (s.released) setStatus('released · click Connect stage', false);
+  else if (s.released) setStatus('released · click Connect', false);
   else if (s.error)    setStatus('searching for Uno…', false);
   else                 setStatus('connecting…', false);
   idleMode = s.idle_mode;
@@ -946,9 +891,9 @@ function startStageEvents() {
 
 function setStatus(label, on) {
   document.getElementById('dot').className = 'status-dot' + (on ? ' on' : '');
-  document.getElementById('statusText').textContent = 'stage: ' + label;
+  document.getElementById('statusText').textContent = label;
   const btn = document.getElementById('connBtn');
-  btn.textContent = on ? 'Release stage' : 'Connect stage';
+  btn.textContent = on ? 'Release' : 'Connect';
   btn.className = 'conn-btn' + (on ? ' active' : '');
 }
 
@@ -1338,6 +1283,8 @@ function _setProjStatus(s) {
   document.getElementById('projDot').className = 'proj-status-dot' + (active ? ' on' : '');
   document.getElementById('projStatusText').textContent = label;
   document.getElementById('projPaneInfo').textContent = label;
+  document.getElementById('projPanelDot').className =
+    'cam-dot' + (!s.monitor ? ' err' : active ? ' on' : '');
   document.getElementById('projMonitorInfo').textContent = s.monitor
     ? `${s.monitor.replace(/^\\\\\.\\/, '')} · ${s.width}×${s.height}`
     : `Not found (${s.error}). Is the projector on? The server checks every 3 s ` +
@@ -1506,10 +1453,10 @@ function onCamImgError() {
 function _camStatsText(c) {
   if (!c.connected) return c.error || 'camera not open';
   const f = (v, w, d = 1) => Number(v).toFixed(d).padStart(w);
-  if (c.deflicker === false) return `${f(c.in_fps, 4)} fps · raw (deflicker off) · mean ${f(c.mean, 5)}`;
-  return `${f(c.in_fps, 4)} fps in → ${f(c.shown_fps, 4)} shown · mean ${f(c.mean, 5)}` +
-         ` / cutoff ${f(c.cutoff, 5)}` + (c.calibration ? ' fixed' : ' live') +
-         ` · forced ${f(c.forced, 4, 0)}`;
+  if (c.deflicker === false) return `${f(c.in_fps, 4)} fps, raw (deflicker off)\nmean ${f(c.mean, 5)}`;
+  return `${f(c.in_fps, 4)} fps in → ${f(c.shown_fps, 4)} shown\n` +
+         `mean ${f(c.mean, 5)} / cutoff ${f(c.cutoff, 5)} ` + (c.calibration ? 'fixed' : 'live') +
+         `\nforced ${f(c.forced, 4, 0)}`;
 }
 
 function _camConnect(serverConfig) {
