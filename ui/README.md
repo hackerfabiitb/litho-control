@@ -140,6 +140,45 @@ Every call raises `Stopped` once Stop is pressed, and leaving the `with`
 block ends the script. `s.calibrate_deflicker()` and `s.fit_transform()`
 run as steps of the test script, and Stop reaches them too.
 
+## Dose test
+
+`ui/dose_test.py` exposes a row of fields along X, each for a different
+time, to find the resist's dose. It runs as a script through the UI, so the
+UI locks and shows it, and Stop ends it with the projector black.
+
+```powershell
+.\.venv\Scripts\python.exe ui\dose_test.py --dry-run     # the plan; nothing moves
+.\.venv\Scripts\python.exe ui\dose_test.py               # 10 fields, 10..100 s
+.\.venv\Scripts\python.exe ui\dose_test.py --times 10 20 30 --gap-um 200
+```
+
+- **Fields:** one row along X only. Y can't be trusted to move as told
+  (xyz_stage/README.md). Fields are 1070 µm + gap apart, at 400 steps/mm:
+  508 steps at the default 200 µm gap. The calibrated X range (0–4800
+  steps) holds 10 of them, so the default is 10..100 s, centred in the
+  range (X 114 … 4686). More fields than fit are refused with the count.
+- **Each field, left to right** (X increasing, as seen in the previews):
+  1. black, then move X, always approached from −X (backlash);
+  2. **focus_markers** in blue, then autofocus: a Z sweep of ±10 steps in
+     1, approached from below. Each position is scored by the Laplacian
+     variance in the four marker regions, the mean of 2 frames;
+  3. **res_test(t)** in blue for t seconds, then black.
+- **Blue for both:** the resist is exposed by blue, and red and blue focus
+  at different heights. So the markers also pick up dose during autofocus.
+- **Camera:** the fitted view during the run (marker positions are known
+  there). On the first field the exposure is set so the brightest marker
+  pixels are ~170. The server's auto exposure can't do this, because the
+  markers are under 1 % of the frame. With only the blue LED on
+  (2026-10-07) that took 174 ms, and the sharpness then read 6.07 ± 0.02 on
+  a fixed focus. Your exposure and view come back at the end.
+- **At the end** the projector is left black, not put back, since what it
+  showed before could expose the resist.
+- **Output:** `dose_tests/<date>/` (git-ignored) holds `log.json` (per field:
+  X, t, focus Z, the sharpness curve, the time actually exposed) and the
+  camera frame at focus of each field.
+
+Patterns: `patterns/scripts/dose_test_patterns.py` (patterns/README.md).
+
 ## Why a Python server, not a JavaScript one
 
 - **The camera:** it's only reachable through pypylon, so Python is needed
@@ -550,6 +589,23 @@ Projector calls return once the change is on screen.
   2026-10-07, with the second one unable to get COM4 or the camera.)
 
 ## Log
+
+### 2026-10-07 — dose test script; patterns from patterns-py
+
+- `ui/dose_test.py` (see Dose test), with the patterns in
+  `patterns/scripts/dose_test_patterns.py`. `script_client` gained
+  `auto_exposure()`.
+- **Tested without moving the stage:**
+  - `--dry-run` plans 10 fields at 508 steps (X 114…4686), and refuses 12
+    ("the X range 0..4800 holds 10");
+  - on the live system, blue LED only: focus_markers projected; the
+    fitted view, the marker regions (they sit on the markers, clear of the
+    fault band) and the marker-based exposure (174 ms, peak 179) all work.
+    Sharpness was steady at 6.07 ± 0.02 over 3 frames. The camera
+    settings came back afterwards.
+- **Not yet run:** the Z sweep and the X moves, which move the stage.
+  Whether the marker sharpness peaks clearly over ±10 Z steps is still to
+  be seen.
 
 ### 2026-10-07 — script mode: locked yellow controls, Script pane with Stop; test scripts through the server
 

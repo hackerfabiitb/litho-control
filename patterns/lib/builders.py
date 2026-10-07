@@ -90,6 +90,7 @@ def l_shape(
     min_font_scale: int = 3,
     label: bool = True,
     intensity: int = 255,
+    reach: int | None = None,
 ) -> ShapeGroup:
     """``n`` horizontal lines of length ``q`` with a checkerboard block on the right.
 
@@ -101,6 +102,10 @@ def l_shape(
     (``line_width * um_per_px``) and drawn to 2 decimal places to the left of the L,
     vertically centered on the horizontal arm. The label's font scale tracks ``line_width``
     but never drops below ``min_font_scale`` (so small L's stay legible).
+
+    ``reach`` is how far the stepped L's run right from the checkerboard before turning
+    up (the gap to the first vertical line); default ``q``. A shorter reach gives a
+    narrower pattern.
     """
     lw = int(line_width)
     if lw < 1:
@@ -116,8 +121,9 @@ def l_shape(
 
     right_x = board_x + (2 * n - 1) * lw
     stem_len = round(1.5 * q)  # vertical stems are 1.5x the base length q
+    reach = q if reach is None else int(reach)
     for i in range(max(0, n - 1)):
-        length = q + i * lw
+        length = reach + i * lw
         y = (2 * i + 1) * lw
         shapes.append(Box(right_x, y, length + i * lw, lw, intensity))
         # vertical line: all tops line up at (2*lw - stem_len); grow the height down to
@@ -148,17 +154,20 @@ def nested_ls(
     min_font_scale: int = 3,
     label: bool = True,
     intensity: int = 255,
+    reach_factor: float | None = None,
 ) -> ShapeGroup:
     """Place one :func:`l_shape` per line width, all sharing a common (top-left) origin.
 
     Each L already has a top-left origin, so they are simply overlaid at (0, 0); larger
     line widths give larger L's that nest around the smaller ones. Intersections between
     L's are not checked. Labels (see :func:`l_shape`) form a column on the left.
+    ``reach_factor`` x line width is each L's ``reach`` (default: ``q_factor``).
     """
     out = ShapeGroup()
     for lw in line_widths:
         q = max(1, round(q_factor * lw))
-        out.add(l_shape(lw, n, q, um_per_px, min_font_scale, label, intensity))
+        reach = None if reach_factor is None else max(1, round(reach_factor * lw))
+        out.add(l_shape(lw, n, q, um_per_px, min_font_scale, label, intensity, reach))
     return out
 
 

@@ -205,6 +205,11 @@ class Session:
     def camera_stats(self):
         return self._get("/config")
 
+    def auto_exposure(self):
+        """Set an exposure where what's projected now is bright but unclipped;
+        returns the stats with exposure_us and p99."""
+        return self._post("/camera/auto_exposure", timeout=60)
+
     def calibrate_deflicker(self):
         """Calibrate deflicker as a step of this script (Stop reaches it)."""
         return self._post(f"/camera/calibrate?token={self.token}", timeout=60)

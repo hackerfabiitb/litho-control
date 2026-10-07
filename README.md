@@ -12,6 +12,7 @@ a camera watches it, and an XYZ stage moves the sample.
 | [`ui/`](ui/README.md) | all three | the control page: stage control (through the server), projector display at native resolution, and side-by-side PROJECTOR mirror and deflickered CAMERA panes, served by `ui/server.py` |
 
 **To run everything:** `.\ui\start.ps1`. It opens the UI in its own Firefox window; Ctrl+C or closing the window stops everything.
+**Dose test:** `ui\dose_test.py` exposes a row of fields along X at different times, with autofocus on blue markers before each ([ui/README.md](ui/README.md#dose-test)).
 While a script runs (Calibrate deflicker, Fit transform, Autofocus, Scan, or a test script run through the server with `ui/script_client.py`), the UI's controls turn yellow and lock, and the Script pane under the serial log shows it with a Stop button ([ui/README.md](ui/README.md#scripts-script-mode)).
 
 ## Setup

@@ -57,10 +57,20 @@ Output goes to `patterns/out/` (git-ignored), except where noted.
 | --- | --- |
 | `make_checkerboards.py [sizes…]` | `patterns/checker_NNNNpx.png` (default 100 200 300) |
 | `res_test_v01.py` | nested L's (4, 17, 35 px lines, labelled in µm) and line arrays (17–35 px, gap 4× the width, both orientations), plus fiducials in the four corners |
-| `dose_test_patterns.py [t …]` | the dose test's two patterns, in blue: `focus_markers` (res_test_v01's corner fiducials alone) and `res_test(t)` (res_test_v01 with "t = 10 s" in the bottom-left corner) |
+| `dose_test_patterns.py [t …]` | the dose test's two patterns (`ui/dose_test.py`), in blue: `focus_markers` (four plus fiducials, the right pair moved left of the DMD fault band) and `res_test(t)` (the same fiducials, res_test_v01's nested L's with a short reach, and on the right the time in big text, "60s", with "HELLO / FRESHIES!!" under it). Everything stays left of the fault band at input x 3456–3712 (mirror columns 1728–1856) |
 | `res_test_v00.py` | line arrays 1–10 px and 1–10 µm, checkerboards, tiled in four quadrants (+ GDS) |
 | `make_l_test.py`, `make_box.py`, `step_test.py`, `electroplating_pattern.py` | small tests; the electroplating mask (GDS) |
 | `live_reload.py [script] [png]` | re-runs a script when lib or the script changes, and shows the PNG in a window |
+
+**Nested L's, `reach`:** `l_shape(reach=…)` / `nested_ls(reach_factor=…)` set
+how far the stepped L's run from the checkerboard before turning up (default
+`q`, 12× the line width). The dose test uses 2×: the L's are 1785 px wide
+instead of 2135.
+
+**The DMD fault band** (2026-10-07): in a camera frame of the markers with
+nothing else lit, the band is bright from input x ≈ 3453 to 3712 px. That's
+mirror columns 1728–1856, the "1728+" band in projector/README.md. The dose
+patterns stay 40 px left of it.
 
 **res_test_v01, changed layout:** as it came from patterns-py, the test
 block was 3407 × 2312 px, taller than the 2160 px field. The smallest L was
@@ -71,7 +81,9 @@ arrays under them.
 
 ![dose test patterns, and the camera's view of them](docs/2026-10-07_dose_test_patterns.jpg)
 
-*Top: `res_test(120)` and `focus_markers` as generated (blue). Bottom: the
-camera's view of `res_test(10)` and `focus_markers` on the bare wafer, blue
-LED only, contrast stretched, before any blue autofocus: defocused, the 18 %
-ghost 439 px up, and the DMD fault band down the right edge.*
+*Top: `res_test(60)` and `focus_markers` as generated (blue), with the DMD
+fault band outlined in red. Bottom: the camera's fitted view of
+`focus_markers` on the bare wafer (blue LED only, contrast stretched), with
+the regions the dose test's autofocus scores; the fault band is the bright
+stripe right of them, and the faint crosses halfway down are the 18 %
+ghost.*

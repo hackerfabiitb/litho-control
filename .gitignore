@@ -9,3 +9,4 @@ xyz_stage/focus.json
 scans/
 camera/scan_calibration.json
 patterns/out/
+dose_tests/
