@@ -182,6 +182,33 @@ UI locks and shows it, and Stop ends it with the projector black.
 
 Patterns: `patterns/scripts/dose_test_patterns.py` (patterns/README.md).
 
+**Imaging the row afterwards:** `ui/strip_scan.py` (below).
+
+## Strip scan (X only)
+
+`ui/strip_scan.py` images a row along X and stitches it into one picture,
+for example a developed dose test. Y and Z aren't moved: Y can't be trusted
+to move as told.
+
+```powershell
+.\.venv\Scripts\python.exe ui\strip_scan.py                    # X 0..4800, a tile every 200 steps
+.\.venv\Scripts\python.exe ui\strip_scan.py --x0 1000 --x1 3000 --pitch 150
+```
+
+- **How it runs:** as a script through the UI. It uses whatever is
+  projected (e.g. White) and the camera as it is, which must be the fitted
+  view.
+- **Tiles:** each is the median of 5 frames after the move settles,
+  approached from −X. A 200-step pitch is ~45 % of a field, so neighbours
+  overlap by more than half.
+- **Output:** `scans/<date>_strip/` holds the tiles and `scan.json`, and
+  `stitch.restitch` turns them into `mosaic_refined.png`. A single row has
+  no loops, so a false match wouldn't be caught. Check that the pair
+  offsets in `mosaic_refined.json` are all alike (~806, 75 px per 200
+  steps).
+- **The row slopes** about 5.3° in the mosaic, because the camera is turned
+  that much from the stage's X axis.
+
 ## Why a Python server, not a JavaScript one
 
 - **The camera:** it's only reachable through pypylon, so Python is needed
@@ -593,6 +620,20 @@ Projector calls return once the change is on screen.
   2026-10-07, with the second one unable to get COM4 or the camera.)
 
 ## Log
+
+### 2026-10-07 — the developed dose test, imaged as one strip
+
+- **Run:** `ui/strip_scan.py` over X 0…4800, under White at 100 µs, at the
+  Y and Z you set (−3002, −4229): 25 tiles, about 1 min.
+- **Stitching:** all 24 pairs matched, every offset 786–824 px in X and
+  72–76 px in Y.
+- **What it shows:** the fields 20 s … 100 s in order
+  ([docs/2026-10-07_dose_test_strip.jpg](docs/2026-10-07_dose_test_strip.jpg),
+  straightened). The 10 s field is out of reach: the wafer sits ~536 steps
+  (≈1.3 mm) from where it was during exposure (70 s now at X 2626, exposed
+  at 3162), which puts the 10 s field near X −420, past the end of travel.
+- Full-size files: `scans/2026-10-07_19-31-21_strip/` (`mosaic_refined.png`
+  21142 × 2796 px; `strip_straight.png` 19441 × 1026, rotated level).
 
 ### 2026-10-07 — first dose test on resist (10–100 s)
 
