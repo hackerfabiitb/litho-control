@@ -133,8 +133,7 @@ def settled_frames(s, settle, n=2):
     return out
 
 
-def autofocus(s, args, z0, zlim, rois):
-    lo, hi = zlim if zlim[0] != zlim[1] else (-10**9, 10**9)
+def _sweep(s, args, z0, lo, hi, rois, tag):
     zs = [z for z in range(z0 - args.af_range, z0 + args.af_range + 1, args.af_step) if lo <= z <= hi]
     s.move(z=max(lo, zs[0] - PRELOAD_STEPS))
     curve, best = [], None
@@ -144,7 +143,25 @@ def autofocus(s, args, z0, zlim, rois):
         curve.append([z, round(score, 2)])
         if best is None or score > best[1]:
             best = (z, score)
-        s.say(f"autofocus {k + 1}/{len(zs)}: Z {z}, sharpness {score:.1f} (best {best[1]:.1f} at Z {best[0]})")
+        s.say(f"autofocus{tag} {k + 1}/{len(zs)}: Z {z}, sharpness {score:.1f} (best {best[1]:.1f} at Z {best[0]})")
+    return best, curve
+
+
+def autofocus(s, args, z0, zlim, rois, resweeps=2):
+    """Z sweep of ±af_range around z0. If the best is at an end of the sweep, the
+    peak may lie beyond it (the blue focus differs from the red one, and the
+    focus drifts ~3 steps per field along X), so sweep again around that end,
+    up to `resweeps` times."""
+    lo, hi = zlim if zlim[0] != zlim[1] else (-10**9, 10**9)
+    curve, center = [], z0
+    for n in range(resweeps + 1):
+        best, c = _sweep(s, args, center, lo, hi, rois, "" if n == 0 else f" (again, around Z {center})")
+        curve += c
+        ends = (c[0][0], c[-1][0])
+        if best[0] not in ends or best[0] in (lo, hi):
+            break
+        center = best[0]
+    best = max(((z, sc) for z, sc in curve), key=lambda zs: zs[1])
     s.move(z=max(lo, best[0] - PRELOAD_STEPS))
     s.move(z=best[0])
     return best, curve

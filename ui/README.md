@@ -161,7 +161,10 @@ UI locks and shows it, and Stop ends it with the projector black.
   1. black, then move X, always approached from −X (backlash);
   2. **focus_markers** in blue, then autofocus: a Z sweep of ±10 steps in
      1, approached from below. Each position is scored by the Laplacian
-     variance in the four marker regions, the mean of 2 frames;
+     variance in the four marker regions, the mean of 2 frames. If the best
+     is at an end of the sweep, the peak may lie beyond it, so it sweeps
+     again around that end (up to twice, so ±30 steps in all). The blue
+     focus can be well away from a red one: 15 steps on 2026-10-07;
   3. **res_test(t)** in blue for t seconds, then black.
 - **Blue for both:** the resist is exposed by blue, and red and blue focus
   at different heights. So the markers also pick up dose during autofocus.
@@ -590,6 +593,28 @@ Projector calls return once the change is on screen.
   2026-10-07, with the second one unable to get COM4 or the camera.)
 
 ## Log
+
+### 2026-10-07 — first dose test on resist (10–100 s)
+
+- **Setup:** a photoresist-coated wafer, focused by hand in red at X 2908
+  (Z −4216). Blue LED only; projector black to start.
+- **Before running:** autofocus now sweeps again when the best is at an end
+  of its sweep. The red focus was 15 steps from the blue focus in the
+  earlier check, outside ±10.
+- **Run** (`ui\dose_test.py`, 13.5 min, `dose_tests/2026-10-07_18-56-00`):
+  - 10 fields at X 114…4686, exposed 10.0 … 100.0 s, every one to the
+    tenth of a second;
+  - marker camera exposure 142 ms (the resist reflects less than the bare
+    wafer: 65 ms);
+  - **focus:** field 1 found its peak only on the second sweep, Z −4201
+    (8.8), 15 steps above the red focus. Every field after that peaked
+    inside its first sweep, at Z −4198 … −4201: on this wafer the blue
+    focus is flat along X to ±1.5 steps;
+  - the script ended "done": projector black, camera exposure and view
+    back.
+- **Dose on the markers:** they also got the autofocus time, ~15–25 s per
+  field (~30 s on field 1), on top of t.
+- **Next:** develop the wafer, look at the fields, and choose the dose.
 
 ### 2026-10-07 — dose test script; patterns from patterns-py
 
