@@ -1,9 +1,10 @@
 """The dose test's two patterns, built from res_test_v01's pieces:
 
   focus_markers   four plus fiducials near the corners, to autofocus on
-  res_test(t)     the same fiducials, res_test_v01's nested L's (with a short reach, so
-                  they're narrower) on the left, and on the right the exposure time in
-                  big text ("60s") with "HELLO / FRESHIES!!" under it
+  res_test(t)     the same fiducials; "HELLO FRESHIES!!" across the top, as big as fits
+                  on one line; under it res_test_v01's nested L's on the left (with a
+                  short reach, so they're narrower) and the exposure time in big text
+                  ("60s") on the right
 
 The right-hand fiducials and everything else stay left of the DMD fault band at input
 x 3456-3712 (mirror columns 1728-1856, measured in the camera 2026-10-07: patterns/
@@ -33,7 +34,7 @@ GAP = v01.GAP                # 120 px between blocks
 REACH_FACTOR = 2             # L's: checkerboard -> first vertical line = 2 x line width
                              # (res_test_v01: 12 x)
 WIDEST_TIME = "888s"         # the exposure text is sized for this, the same for every t
-GREETING = ("HELLO", "FRESHIES!!")
+GREETING = "HELLO FRESHIES!!"
 
 
 def _right_edge(p: Pattern) -> int:
@@ -93,25 +94,27 @@ def res_test(t_s) -> Pattern:
     l_block = nested_ls(n=5, line_widths=v01.L_LINE_WIDTHS, reach_factor=REACH_FACTOR)
     _, _, lw, lh = l_block.bbox()
 
-    # the text column: everything between the L's and the right edge, between the
-    # fiducial rows; the time as big as fits, the greeting under it, half its scale
+    # between the fiducial rows: the greeting on one line across the whole usable
+    # width, as big as fits with room for the L's under it
     fh = 3 * v01.FIDUCIAL_SQ
     top, bottom = MARGIN + fh + GAP // 2, p.height_px - MARGIN - fh - GAP // 2
-    x0 = MARGIN + lw + GAP
-    col_w, col_h = _right_edge(p) - x0, bottom - top
-    big = _largest_scale([WIDEST_TIME], col_w, col_h * 0.55)
-    small = min(_largest_scale(GREETING, col_w, col_h * 0.45), max(1, big // 2))
-    time_txt = _text(f"{t_s:g}s", big)
-    greet = _text_lines(GREETING, small)
-    _, _, tw, th = time_txt.bbox()
+    width = _right_edge(p) - MARGIN
+    g_scale = _largest_scale([GREETING], width, bottom - top - GAP - lh)
+    greet = _text(GREETING, g_scale)
     _, _, gw, gh = greet.bbox()
-    block_h = th + GAP + gh
-    y = top + (col_h - block_h) // 2
-    p.place(time_txt, x0 + (col_w - tw) // 2, y)
-    p.place(greet, x0 + (col_w - gw) // 2, y + th + GAP)
+    p.place(greet, MARGIN + (width - gw) // 2, top)
 
-    # the L's, vertically centred, left of the text
-    p.place(l_block, MARGIN, (p.height_px - lh) // 2)
+    # under it: the L's on the left, the time as big as fits on the right, both
+    # centred in the height that's left
+    y0 = top + gh + GAP
+    row_h = bottom - y0
+    x0 = MARGIN + lw + GAP
+    col_w = _right_edge(p) - x0
+    t_scale = _largest_scale([WIDEST_TIME], col_w, row_h)
+    time_txt = _text(f"{t_s:g}s", t_scale)
+    _, _, tw, th = time_txt.bbox()
+    p.place(l_block, MARGIN, y0 + (row_h - lh) // 2)
+    p.place(time_txt, x0 + (col_w - tw) // 2, y0 + (row_h - th) // 2)
     return p
 
 

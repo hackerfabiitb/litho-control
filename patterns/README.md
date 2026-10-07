@@ -57,7 +57,7 @@ Output goes to `patterns/out/` (git-ignored), except where noted.
 | --- | --- |
 | `make_checkerboards.py [sizes…]` | `patterns/checker_NNNNpx.png` (default 100 200 300) |
 | `res_test_v01.py` | nested L's (4, 17, 35 px lines, labelled in µm) and line arrays (17–35 px, gap 4× the width, both orientations), plus fiducials in the four corners |
-| `dose_test_patterns.py [t …]` | the dose test's two patterns (`ui/dose_test.py`), in blue: `focus_markers` (four plus fiducials, the right pair moved left of the DMD fault band) and `res_test(t)` (the same fiducials, res_test_v01's nested L's with a short reach, and on the right the time in big text, "60s", with "HELLO / FRESHIES!!" under it). Everything stays left of the fault band at input x 3456–3712 (mirror columns 1728–1856) |
+| `dose_test_patterns.py [t …]` | the dose test's two patterns (`ui/dose_test.py`), in blue: `focus_markers` (four plus fiducials, the right pair moved left of the DMD fault band) and `res_test(t)` (the same fiducials; "HELLO FRESHIES!!" across the top, as big as fits on one line; under it res_test_v01's nested L's with a short reach on the left and the time in big text, "60s", on the right). Everything stays left of the fault band at input x 3456–3712 (mirror columns 1728–1856) |
 | `res_test_v00.py` | line arrays 1–10 px and 1–10 µm, checkerboards, tiled in four quadrants (+ GDS) |
 | `make_l_test.py`, `make_box.py`, `step_test.py`, `electroplating_pattern.py` | small tests; the electroplating mask (GDS) |
 | `live_reload.py [script] [png]` | re-runs a script when lib or the script changes, and shows the PNG in a window |
@@ -82,8 +82,8 @@ arrays under them.
 ![dose test patterns, and the camera's view of them](docs/2026-10-07_dose_test_patterns.jpg)
 
 *Top: `res_test(60)` and `focus_markers` as generated (blue), with the DMD
-fault band outlined in red. Bottom: the camera's fitted view of
-`focus_markers` on the bare wafer (blue LED only, contrast stretched), with
-the regions the dose test's autofocus scores; the fault band is the bright
-stripe right of them, and the faint crosses halfway down are the 18 %
-ghost.*
+fault band outlined in red. Bottom: the four markers in the camera after
+the dose test's autofocus, one row per field of the 3-field check
+(2026-10-07, bare wafer, blue LED only). They're sharp, with dust and
+scratches on the wafer showing on them; the fault band's bars are at the
+right edge, just clear of the right-hand pair.*

@@ -1351,14 +1351,14 @@ async function runAutofocus() {
   discardAfResult();
   setAfUI(true, 0, zSteps.length, `0 / ${zSteps.length}`);
   log(`Autofocus: sweeping ${zSteps.length} positions ±${range} steps, step=${stepSz}, ` +
-      'on a 32 px checkerboard', 'sys');
+      'on a 128 px checkerboard', 'sys');
 
   let bestZ = pos.Z, bestScore = -Infinity;
 
   try {
     // Sharp edges everywhere to focus on; what was showing comes back after.
     await _projector('/projector/remember');
-    await _projector('/projector/pattern', { checker: 32 });
+    await _projector('/projector/pattern', { checker: 128 });   // 32 px until 2026-10-07
     // At the usual 400 us the checkerboard clips and its edges vanish in the
     // veil, so pick an unclipped exposure for the sweep; yours comes back after.
     afExposureBefore = +document.getElementById('camExposure').value;

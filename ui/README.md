@@ -168,9 +168,9 @@ UI locks and shows it, and Stop ends it with the projector black.
 - **Camera:** the fitted view during the run (marker positions are known
   there). On the first field the exposure is set so the brightest marker
   pixels are ~170. The server's auto exposure can't do this, because the
-  markers are under 1 % of the frame. With only the blue LED on
-  (2026-10-07) that took 174 ms, and the sharpness then read 6.07 ± 0.02 on
-  a fixed focus. Your exposure and view come back at the end.
+  markers are under 1 % of the frame. With only the blue LED on that took
+  174 ms; after the blue current was raised, 65 ms (2026-10-07). Your
+  exposure and view come back at the end.
 - **At the end** the projector is left black, not put back, since what it
   showed before could expose the resist.
 - **Output:** `dose_tests/<date>/` (git-ignored) holds `log.json` (per field:
@@ -261,7 +261,8 @@ was 12.2.
   needs to save any Z.
 
 **Autofocus** maximises sharpness:
-1. puts up a **32 px checkerboard** (sharp edges everywhere), and notes what
+1. puts up a **128 px checkerboard** (sharp edges everywhere; 32 px until
+   2026-10-07, when the blue LED current was raised), and notes what
    the projector was showing;
 2. **auto exposure** (`POST /camera/auto_exposure`) picks an exposure where
    the checkerboard's lit frames aren't clipped. At the usual 400 µs the
@@ -603,9 +604,18 @@ Projector calls return once the change is on screen.
     fault band) and the marker-based exposure (174 ms, peak 179) all work.
     Sharpness was steady at 6.07 ± 0.02 over 3 frames. The camera
     settings came back afterwards.
-- **Not yet run:** the Z sweep and the X moves, which move the stage.
-  Whether the marker sharpness peaks clearly over ±10 Z steps is still to
-  be seen.
+- **Then the dose pattern was reworked:** "HELLO FRESHIES!!" across the
+  top, as big as fits on one line; the L's and the time ("60s") under it.
+  The UI's Autofocus now uses a 128 px checkerboard instead of 32 px.
+- **Short check, run on the stage** (`--times 5 5 5`, blue LED raised,
+  bare wafer): 3 fields at X 1892 / 2400 / 2908 in 68 s, each exposed
+  5.0 s. Marker exposure was 65 ms (peak 160). Autofocus found Z −4225,
+  −4227 and −4231, each a clear peak inside ±10, e.g. field 1 rose from
+  5.9 at −4235 to 8.6 at −4225 and fell to 5.8 at −4215. The markers came
+  out sharp in the focus frames. Afterwards the projector was black, the
+  camera exposure and view were back, and the script ended "done".
+  Focus drifts ~3 steps per field along X (the tilt seen before), so
+  refocusing at every field is worth it.
 
 ### 2026-10-07 — script mode: locked yellow controls, Script pane with Stop; test scripts through the server
 
