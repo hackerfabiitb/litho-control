@@ -57,8 +57,8 @@ bottom half (camera):
 |  state    | step delay       | Image… + fit    |                   |
 | serial    | motors           | Checker [px]    |                   |
 |  log      | Z focus          |-----------------|-------------------|
-|           |                  | CAMERA panel    | camera feed       |
-|           |                  | status, stats,  |                   |
+| script    |                  | CAMERA panel    | camera feed       |
+|  + Stop   |                  | status, stats,  |                   |
 |           |                  | exposure, keep, |                   |
 |           |                  | max hold,       |                   |
 |           |                  | deflicker       |                   |
@@ -66,7 +66,7 @@ bottom half (camera):
 
 | area | shows |
 | --- | --- |
-| **info** (full height, left) | "HackerFab IITB Litho Control", the local time as `YYYY-MM-DD_HH-MM-SS` (24 h), a state snapshot export, and the **serial log** |
+| **info** (full height, left) | "HackerFab IITB Litho Control", the local time as `YYYY-MM-DD_HH-MM-SS` (24 h), a state snapshot export, the **serial log**, and the **Script** pane (what script runs, with **Stop**; see Scripts) |
 | **STAGE** (full height) | the stage status (`connected · COM4`: the server's serial link to the Uno) with **Release / Connect**. Below it: **position**, one row per axis, `limit min [‹ position ›] limit max` ("—" for an axis without limits; ‹ › move one step; typing a position and pressing Enter moves that axis there, clamped to its limits); step size (presets, and a field showing the current step); step delay (µs per step, lower = faster); motors between moves; **Z focus** (set / go / autofocus sweep) last |
 | **PROJECTOR** panel | what the projector shows, and its display (`DISPLAY5 · 3840×2160`, or why it wasn't found); **White** (`patterns/white_4K.jpg`), **Black**, **Desktop**; **Image…** with the **fit** selector; **Checker** with its square size in px. See Projecting |
 | **projector preview** (top right) | a screen capture of the projector's display, 1280 px wide, about 5 fps. It shows what the projector is really showing, including the desktop or anything that pops up over the pattern. The **mouse pointer** is drawn in when it's on the projector's screen (screen captures leave it out) |
@@ -89,6 +89,56 @@ padded to a fixed width, so the text around them doesn't shift.
 **Keys** (anywhere outside a text field): ← → move X, ↑ ↓ move Y, PgUp/PgDn
 move Z, one step each. On X, ← is +X (it moves the stage left), so it lights
 the field's › arrow.
+
+## Scripts (script mode)
+
+A **script** is anything that drives the hardware by itself for a while:
+
+| script | runs in | Stop |
+| --- | --- | --- |
+| **Calibrate deflicker** | the server | ends the 5 s collection at once; the calibration is left as it was |
+| **Fit transform** | the server | before its next exposure try; the transform is left as it was |
+| **Autofocus** | the page | before the next Z position; the stage stays where it is, no result offered |
+| **Scan** | the server | after the current field; then it saves, as before |
+| **a test script** | outside, through the server (`ui/script_client.py`, below) | at its next call to the server |
+
+One runs at a time; starting a second answers 409 "a script is running".
+While one runs (screenshot: [docs/2026-10-07_script_mode.jpg](docs/2026-10-07_script_mode.jpg)):
+- **Script mode:** every button and number field turns **yellow** and
+  ignores clicks and typing, and the stage keys do nothing. The previews,
+  the camera stats and the position fields keep updating, so you can watch.
+  Browser keys (reload, zoom) still work.
+- **Script pane** (under the serial log): the script's name and running
+  time, where it was started from (UI, or Claude's test script), and its
+  progress line. Its red **Stop** is the only live control.
+- **The serial log** notes when each script starts and how it ended
+  (done, stopped, failed: reason).
+
+A script run outside the server (Autofocus in the page, a test script)
+checks in at least every 15 s; if it goes quiet (the page closed, the
+script crashed), the server ends it ("lapsed") and the controls unlock.
+
+**Test scripts through the UI.** A test that needs the camera, projector or
+stage goes through the running server instead of opening them itself, so
+the UI stays open and you see what it does: the patterns in the projector
+preview, the camera feed, the stage position, and its progress in the
+Script pane.
+
+```python
+import sys; sys.path.insert(0, "ui")
+from script_client import Session
+
+with Session("Y step test") as s:          # needs .\ui\start.ps1 running
+    s.say("projecting white")              # shown in the Script pane
+    s.white()                              # or s.checker(32), s.pattern(name), s.image(array)
+    seq, img = s.frame()                   # newest deflickered (fitted) camera frame
+    s.move(y=s.pos()[1] + 10)              # absolute move, waits for DONE
+    seq, img2 = s.frame(after=seq)         # a frame newer than that one
+```
+
+Every call raises `Stopped` once Stop is pressed, and leaving the `with`
+block ends the script. `s.calibrate_deflicker()` and `s.fit_transform()`
+run as steps of the test script, and Stop reaches them too.
 
 ## Why a Python server, not a JavaScript one
 
@@ -429,13 +479,20 @@ projector's desktop (1776×999).*
 | `GET /` | the page (`index.html`) |
 | `GET /stage/events` | server-sent events: `status` (JSON: `connected`, `port`, `idle_mode`, `error`), `replay` (cached state lines for a newly opened page: POS, LIMITS, CAL…, FOCUS, LS limit switches) and `line` (every line from the firmware) |
 | `GET /stage/status` | the status JSON |
-| `POST /stage/send` | `{"line": "J X 10"}`: one firmware command (protocol in `xyz_stage/litho-ui_README.md`) |
+| `POST /stage/send` | `{"line": "J X 10"}`: one firmware command (protocol in `xyz_stage/litho-ui_README.md`). With `"wait": "DONE", "timeout": 10` it answers once a reply starting with that arrives (`{"reply": line}`; 504 if none) |
+| `GET /stage/state` | connection, `pos` as `[x, y, z]` steps, and the cached state lines |
+| `GET /script/status` | the running script: `active`, `name`, `source`, `detail`, `elapsed_s`, `stop_requested`; and `last`: how the previous one ended |
+| `POST /script/start` | `{"name", "source", "detail"}`: register a script run outside the server; answers a `token`, or 409 if one runs |
+| `POST /script/update` | `{"token", "detail"}`: heartbeat (at least every 15 s) and progress line; answers the status, whose `stop_requested` means stop now |
+| `POST /script/end` | `{"token", "outcome"}` |
+| `POST /script/stop` | the Script pane's Stop |
+| `GET /camera/frame` | the newest shown camera frame as PNG (deflickered, fitted view if on), header `X-Frame-Seq`; `?after=<seq>&timeout=3` waits for a newer one |
 | `POST /stage/connect`, `POST /stage/disconnect` | take or release COM4. Connecting is the default; release it to flash firmware |
 | `GET /stream` | deflickered camera, MJPEG |
 | `GET /projector/stream` | projector screen mirror, MJPEG |
 | `GET /config`, `POST /config` | camera settings and stats (including `deflicker` and `calibration`); POST any of `exposure_us`, `keep_frac`, `max_hold`, `deflicker` (true/false) |
 | `POST /camera/fit_transform` | Fit transform (above); ~2 s, answers with the stats, or 409 if the camera or projector is missing or no outline is found. `POST /config {"transform": false}` shows the whole sensor again |
-| `POST /camera/calibrate` | deflicker calibration (above); takes ~6 s, answers with the stats, or 409 if the camera or projector is missing |
+| `POST /camera/calibrate` | deflicker calibration (above); takes ~6 s, answers with the stats, or 409 if the camera or projector is missing, another script runs, or it was stopped. It runs as a script; `?token=` runs it as a step of the caller's script (also for `fit_transform`) |
 | `GET /focus_score` | Laplacian variance of the latest shown camera frame (sharpness) |
 | `POST /scan/start` `{"pitch", "autofocus", "af_range", "af_step", "af_settle"}`, `POST /scan/stop`, `GET /scan/status` | the scan (above). Status: `phase`, `tiles`, `calibration` (pitch in steps, µm per step), `last_residual` / `last_quality` / `last_registered`, `saved`, `error` |
 | `POST /track/start`, `/track/stop`, `/track/zero`; `GET /track/status` | optical tracking (above). Status: `stepper_um`, `optical_um`, `diff_um` (X/Y), `u_um`/`v_um` (camera axes), `status` (tracking / lost), `psr` (quality), `rate` (Hz), `axes` learned |
@@ -493,6 +550,40 @@ Projector calls return once the change is on screen.
   2026-10-07, with the second one unable to get COM4 or the camera.)
 
 ## Log
+
+### 2026-10-07 — script mode: locked yellow controls, Script pane with Stop; test scripts through the server
+
+- **Scripts:** Calibrate deflicker, Fit transform, Autofocus, Scan, and
+  test scripts run through the server. One at a time, registered with the
+  server (`Scripts` in `server.py`, `/script/*`).
+- **Script mode:** while one runs, every button and number field is yellow
+  and ignores input. Blocking is done by capture-phase listeners, not by
+  disabling, so no control's own enabled state is disturbed.
+- **Script pane** under the serial log, with Stop. Stop reaches each kind:
+  Calibrate deflicker and Fit transform now take a stop event, Autofocus
+  checks it before each Z position, Scan stops after the current field.
+- **Autofocus** runs as a script; its own Cancel button is gone (Stop
+  replaces it).
+- **Test scripts:** `ui/script_client.py` runs them through the server, so
+  the UI stays open and shows what they do. New endpoints: `/stage/state`,
+  `/camera/frame`, and `wait` on `/stage/send`.
+- **Tested** against the running server, with **no stage motion**:
+  - a client script showed a checkerboard, white and black, and read
+    frames and the position;
+  - a second script was refused, and the heartbeat kept the script alive
+    past the 15 s lease;
+  - headless Firefox, 17/17 checks: controls turn yellow; a click on
+    White, typing into Exposure and the Deflicker toggle were all ignored;
+    Stop reached the script; the page unlocked after the end and after a
+    15 s lapse; White worked again afterwards; the log shows start and
+    end;
+  - Calibrate deflicker stopped 1.5 s in, ended at once, and left
+    `deflicker_calibration.json` unchanged;
+  - a scan refused while another script ran, and a scan failing its
+    parameter check, both unlocked.
+
+  Autofocus and a full scan under script mode weren't run (they move the
+  stage).
 
 ### 2026-10-07 — stitching fixed for scan 02-32-17 ("HACKER FAB" twice, holes)
 

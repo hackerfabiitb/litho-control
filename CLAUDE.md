@@ -10,6 +10,13 @@
   - `projector/README.md`
   - `xyz_stage/README.md`
   - `ui/README.md`
+- **Run hardware tests through the UI, in script mode.** Keep the UI open
+  (start `ui\start.ps1` in the background if it isn't running) and drive the
+  camera, projector and stage through the server with
+  `ui/script_client.py` (`with Session("what it tests") as s:`), giving
+  progress with `s.say(...)`. The user then sees the patterns, the camera
+  feed and the stage position, with the controls locked and a Stop button.
+  Don't open the camera or COM4 directly while the UI could be running.
 - **Record debugging results.** Add each hardware investigation to the
   "Debugging log" of the relevant directory's README. Include the date,
   symptom, method, measured results, interpretation, next steps and status.

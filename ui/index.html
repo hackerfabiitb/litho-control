@@ -24,6 +24,7 @@
     --warn:     #f0a500;
     --danger:   #e05555;
     --blue:     #4a9eff;
+    --script:   #e8c547;   /* script mode: locked controls */
     --mono:     'IBM Plex Mono', monospace;
     --sans:     'IBM Plex Sans', sans-serif;
   }
@@ -449,6 +450,33 @@
     transition: all 0.12s;
   }
   .af-cancel-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* ── Script mode: a script (Calibrate deflicker, Fit transform, Autofocus,
+     Scan, or a test run through the server) is running. Every control turns
+     yellow and ignores input; the Script pane's Stop is the way out. ── */
+  body.script-mode button:not(.script-exempt),
+  body.script-mode input:not(.script-exempt),
+  body.script-mode .numfield,
+  body.script-mode .numfield .nf-btn {
+    background: var(--script) !important;
+    color: #1a1a1a !important;
+    border-color: #a88a1e !important;
+    box-shadow: none !important;
+    cursor: not-allowed !important;
+  }
+  body.script-mode button small { color: #3a3a3a !important; }
+  .script-pane { flex-shrink: 0; padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .script-name { font-size: 15px; color: var(--dim); }
+  .script-pane.on { background: rgba(232, 197, 71, 0.10); }
+  .script-pane.on .script-name { color: var(--script); font-weight: 600; }
+  .script-detail { font-size: 13px; color: var(--dim); white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
+  .script-stop {
+    font-family: var(--mono); font-size: 17px; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; padding: 8px; border: 1px solid var(--danger); border-radius: 2px;
+    background: var(--danger); color: #fff; cursor: pointer;
+  }
+  .script-stop:hover:not(:disabled) { filter: brightness(1.15); }
+  .script-stop:disabled { opacity: 0.6; cursor: default; }
 </style>
 </head>
 <body>
@@ -470,6 +498,14 @@
     <div class="section-hdr" style="border-top:1px solid var(--border);">Serial log</div>
     <div class="log-wrap">
       <div class="log" id="log"></div>
+    </div>
+
+    <div class="section-hdr" style="border-top:1px solid var(--border);">Script</div>
+    <div class="script-pane" id="scriptPane">
+      <div class="script-name" id="scriptName">no script running</div>
+      <div class="script-detail" id="scriptDetail"></div>
+      <button class="script-stop script-exempt" id="scriptStopBtn" onclick="stopScript()" style="display:none;"
+              title="Stop the running script (a scan stops after the current field and saves)">Stop</button>
     </div>
 
   </div>
@@ -535,7 +571,7 @@
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <div class="step-label" style="margin:0;">Scan (spiral + stitch)</div>
         <button class="cam-apply-btn" id="scanBtn" onclick="toggleScan()"
-                title="From here: fields in a spiral, white + autofocus at each, stitched live into the projector preview. Stop finishes the current field and saves.">Start</button>
+                title="From here: fields in a spiral, white + autofocus at each, stitched live into the projector preview. Runs as a script: Stop (Script pane, left) finishes the current field and saves.">Start</button>
       </div>
       <div class="af-row" style="margin-top:8px;">
         <label>PITCH</label>
@@ -600,8 +636,8 @@
         </div>
         <div class="af-status" id="afStatus"></div>
         <div class="af-live" title="Sharpness of the camera view: variance of its Laplacian (edge strength). Autofocus moves Z to where this peaks.">sharpness <span id="afLive">—</span></div>
-        <button class="go-btn" style="margin-top:6px;" id="afRunBtn" onclick="runAutofocus()">Run Autofocus</button>
-        <button class="af-cancel-btn" id="afCancelBtn" onclick="cancelAutofocus()">Cancel</button>
+        <button class="go-btn" style="margin-top:6px;" id="afRunBtn" onclick="runAutofocus()"
+                title="Runs as a script: the controls lock while it sweeps; Stop is in the Script pane (left)">Run Autofocus</button>
         <div class="af-result" id="afResult" style="display:none;">
           <div id="afResultText"></div>
           <div class="af-result-btns">
@@ -1270,7 +1306,6 @@ async function _projector(path, body) {
 
 function setAfUI(running, done, total, statusText) {
   document.getElementById('afRunBtn').disabled = running;
-  document.getElementById('afCancelBtn').style.display = running ? '' : 'none';
   const wrap = document.getElementById('afProgressWrap');
   const bar  = document.getElementById('afProgressBar');
   const stat = document.getElementById('afStatus');
@@ -1303,6 +1338,15 @@ async function runAutofocus() {
   }
   if (zSteps.length === 0) { log('Autofocus: no valid Z positions in range', 'err'); return; }
 
+  // A script: the controls lock, and the Script pane shows it with Stop.
+  let afToken;
+  try { afToken = await scriptBegin('Autofocus', `Z sweep ±${range} steps, step ${stepSz}, ${zSteps.length} positions`); }
+  catch (e) { log('Autofocus: ' + e.message, 'err'); return; }
+  const heartbeat = setInterval(async () => {
+    if ((await scriptUpdate(afToken)).stop_requested) afCancelFlag = true;
+  }, 4000);
+  let afOutcome = 'done';
+
   afRunning = true; afCancelFlag = false;
   discardAfResult();
   setAfUI(true, 0, zSteps.length, `0 / ${zSteps.length}`);
@@ -1327,7 +1371,7 @@ async function runAutofocus() {
     log(`Autofocus: exposure ${aed.exposure_us} µs for the sweep (was ${afExposureBefore} µs)`, 'sys');
     await _sleep(settle);
     for (let i = 0; i < zSteps.length; i++) {
-      if (afCancelFlag) { log('Autofocus cancelled.', 'sys'); break; }
+      if (afCancelFlag) { log('Autofocus stopped.', 'sys'); afOutcome = 'stopped'; break; }
       const targetZ = zSteps[i];
       const done = waitForDone(15000);
       await send(`A ${pos.X} ${pos.Y} ${targetZ}`);
@@ -1336,6 +1380,9 @@ async function runAutofocus() {
       const score = await getFocusScore();
       if (score > bestScore) { bestScore = score; bestZ = targetZ; }
       setAfUI(true, i + 1, zSteps.length, `Z=${targetZ}  score=${score.toFixed(1)}  best=${bestScore.toFixed(1)}`);
+      const st = await scriptUpdate(afToken, `${i + 1} / ${zSteps.length}: Z ${targetZ}, sharpness ` +
+                                             `${score.toFixed(1)} (best ${bestScore.toFixed(1)} at Z ${bestZ})`);
+      if (st.stop_requested) afCancelFlag = true;
     }
 
     if (!afCancelFlag) {
@@ -1345,10 +1392,13 @@ async function runAutofocus() {
       await done;
       afBest = { z: bestZ, score: bestScore };
       _showAfResult();
+      afOutcome = `best Z ${bestZ} (sharpness ${bestScore.toFixed(1)})`;
     }
   } catch(e) {
     log('Autofocus error: ' + e.message, 'err');
+    afOutcome = 'failed: ' + e.message;
   } finally {
+    clearInterval(heartbeat);
     try { await _projector('/projector/restore'); }
     catch (e) { log('Projector: ' + e.message, 'err'); }
     if (afExposureBefore) {
@@ -1358,10 +1408,9 @@ async function runAutofocus() {
     }
     afRunning = false;
     setAfUI(false);
+    await scriptEnd(afToken, afOutcome);
   }
 }
-
-function cancelAutofocus() { afCancelFlag = true; }
 
 // ── Camera + projector mirror (served by ui/server.py) ──────────
 // Same origin: the page is served by ui/server.py, which also streams
@@ -1719,6 +1768,110 @@ async function _pollScan() {
   } catch (_) { /* server down */ }
 }
 
+// ── Scripts ────────────────────────────────────────────────
+// One script at a time (ui/server.py, Scripts): Calibrate deflicker, Fit
+// transform and Scan run on the server; Autofocus runs here; test scripts
+// run from outside through the server (ui/script_client.py). While one runs,
+// every control is yellow and ignores input (script mode), and the Script
+// pane shows it with a Stop button.
+let scriptLocked = false;
+let scriptLastEnded = null;     // the server's `last`, to log each ending once
+
+async function _pollScript() {
+  try {
+    const r = await fetch('/script/status', { signal: AbortSignal.timeout(1500) });
+    if (r.ok) _showScript(await r.json());
+  } catch (_) { /* server down: the camera ping reports it */ }
+}
+
+function _showScript(st) {
+  const on = !!st.active;
+  if (on !== scriptLocked) {
+    scriptLocked = on;
+    document.body.classList.toggle('script-mode', on);
+    // nothing half-typed stays focused (its change is blocked while locked)
+    if (on && document.activeElement && document.activeElement !== document.body &&
+        !document.activeElement.closest('#scriptPane')) document.activeElement.blur();
+    if (on) log(`Script started: ${st.name} (from ${st.source})`, 'sys');
+  }
+  const pane = document.getElementById('scriptPane');
+  pane.classList.toggle('on', on);
+  const stop = document.getElementById('scriptStopBtn');
+  stop.style.display = on ? '' : 'none';
+  if (on) {
+    const t = Math.round(st.elapsed_s), mmss = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+    document.getElementById('scriptName').textContent = `${st.name} · ${mmss}`;
+    document.getElementById('scriptDetail').textContent =
+      `from ${st.source}` + (st.detail ? `\n${st.detail}` : '') +
+      (st.stop_requested ? '\nstopping…' : '');
+    stop.disabled = !!st.stop_requested;
+    stop.textContent = st.stop_requested ? 'Stopping…' : 'Stop';
+  } else {
+    document.getElementById('scriptName').textContent = 'no script running';
+    const l = st.last;
+    document.getElementById('scriptDetail').textContent =
+      l ? `last: ${l.name} (from ${l.source}), ${l.outcome}, ${l.ended}` : '';
+  }
+  // log each ending once; one that happened before this page loaded isn't news
+  const key = st.last ? `${st.last.name}|${st.last.ended}|${st.last.outcome}` : '';
+  if (scriptLastEnded !== null && key && key !== scriptLastEnded) {
+    const bad = /^(failed|lapsed)/.test(st.last.outcome);
+    log(`Script ended: ${st.last.name}: ${st.last.outcome}`, bad ? 'err' : 'sys');
+  }
+  scriptLastEnded = key;
+}
+
+async function stopScript() {
+  afCancelFlag = true;                 // autofocus runs here: stop it at once
+  try {
+    const r = await fetch('/script/stop', { method: 'POST', signal: AbortSignal.timeout(5000) });
+    _showScript(await r.json());
+    log('Script: stop requested', 'sys');
+  } catch (e) { log('Script stop: ' + e.message, 'err'); }
+}
+
+// A script run by this page (Autofocus): register it, heartbeat with a
+// detail line (the answer says whether Stop was pressed), end it.
+async function _scriptCall(path, body) {
+  const r = await fetch(path, { method: 'POST', body: JSON.stringify(body),
+                                headers: { 'Content-Type': 'application/json' },
+                                signal: AbortSignal.timeout(5000) });
+  const st = await r.json();
+  if (!r.ok) throw new Error(st.error || ('HTTP ' + r.status));
+  _showScript(st);
+  return st;
+}
+const scriptBegin  = (name, detail) => _scriptCall('/script/start', { name, source: 'UI', detail }).then(s => s.token);
+const scriptUpdate = (token, detail) => _scriptCall('/script/update', { token, detail }).catch(() => ({}));
+const scriptEnd    = (token, outcome) => _scriptCall('/script/end', { token, outcome }).catch(() => ({}));
+
+// Script mode: user input on any control is swallowed before the control
+// sees it (capture phase), except in the Script pane. The page's own code
+// still drives the controls. Keys are kept from the page's shortcuts (stage
+// jog) but browser keys (reload, zoom) still work.
+(function lockInputDuringScripts() {
+  const CONTROL = 'button, input, select, textarea, label, .numfield, .step-btn, .hz-btn';
+  const types = ['click', 'dblclick', 'mousedown', 'pointerdown', 'mouseup', 'keydown',
+                 'keypress', 'input', 'change', 'focusin', 'wheel', 'paste', 'drop'];
+  for (const type of types) {
+    document.addEventListener(type, e => {
+      if (!scriptLocked || !e.isTrusted) return;
+      const t = e.target instanceof Element ? e.target : null;
+      if (t && t.closest('#scriptPane, .script-exempt')) return;
+      if (type === 'keydown' || type === 'keypress') {
+        e.stopImmediatePropagation();
+        if (t && t.closest(CONTROL)) e.preventDefault();
+        return;
+      }
+      if (t && t.closest(CONTROL)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (type === 'focusin') t.blur();
+      }
+    }, true);
+  }
+})();
+
 // ── Clock ──────────────────────────────────────────────────
 // Local time as YYYY-MM-DD_HH-MM-SS (24 h).
 function updateClock() {
@@ -1779,6 +1932,8 @@ _pollTracking();
 setInterval(() => { if (trackActive) _pollTracking(); }, 300);
 _pollScan();
 setInterval(() => { if (scanActive) _pollScan(); }, 500);
+_pollScript();
+setInterval(_pollScript, 500);
 
 // Auto-try camera server on load and keep polling
 camPingTimer = setInterval(_pingCamServer, 1000);

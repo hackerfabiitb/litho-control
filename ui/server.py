@@ -14,7 +14,9 @@ GET  /stage/events           server-sent events: `line` (each line from the
                              new page: POS, LIMITS, CAL..., FOCUS) and
                              `status` (JSON: connected, port, idle_mode, error)
 GET  /stage/status           that status JSON
-POST /stage/send             {"line": "J X 10"} — one firmware command
+POST /stage/send             {"line": "J X 10"} — one firmware command;
+                             with "wait": "DONE", "timeout": 10 it answers once a
+                             reply starting with that arrives ({"reply"}; 504 if not)
 POST /stage/connect          (re)connect automatically — the default
 POST /stage/disconnect       release the COM port, e.g. to flash firmware
 GET  /stream                 deflickered camera feed, MJPEG (full resolution)
@@ -48,6 +50,24 @@ POST /track/stop             stop it, put back projector and exposure
 POST /track/zero             zero both readings (stepper and optical) here
 GET  /track/status           stepper vs optical X/Y in um, their difference,
                              tracker status and quality, learned axes
+GET  /script/status           the running script (one at a time): name, source,
+                             detail, elapsed, stop_requested; and how the last
+                             one ended. While one runs the page locks its controls
+POST /script/start           {"name", "source", "detail"}: start a script run from
+                             outside the server (the page's autofocus,
+                             ui/script_client.py); answers a token. 409 if one runs
+POST /script/update          {"token", "detail"}: heartbeat, at least every 15 s
+                             (or the script is ended); answers the status, whose
+                             stop_requested means: stop now
+POST /script/end             {"token", "outcome"}
+POST /script/stop            the Script pane's Stop: flags the running script and
+                             stops it (Scan: after the current field).
+                             Calibrate deflicker, Fit transform and Scan register
+                             as scripts themselves; ?token= runs Calibrate / Fit
+                             as a step of the caller's running script
+GET  /stage/state            connection, POS as [x, y, z], the cached state lines
+GET  /camera/frame           the newest shown camera frame as PNG (header
+                             X-Frame-Seq); ?after=<seq>&timeout=3 waits for a newer
 GET  /focus                  the saved focus Z: {"z", "source", "date"} (z null if none)
 POST /focus                  {"z": 1234, "source": "autofocus"}: save it
                              (xyz_stage/focus.json; loaded at startup, nothing moves)
@@ -394,9 +414,11 @@ class Camera(threading.Thread):
         self.calibration_stale = abs(c["exposure_us"] - self.exposure_us) > 0.5
         self.filter.fixed_top = None if self.calibration_stale else c["top"]
 
-    def calibrate(self, projector):
+    def calibrate(self, projector, stop=None):
         """Show the reference image, collect frame means for CAL_SECONDS,
-        freeze the top, then put back what the projector was showing."""
+        freeze the top, then put back what the projector was showing.
+        stop: an Event (the Script pane's Stop) that ends it early, unsaved."""
+        stop = stop or threading.Event()
         if not self.connected:
             raise RuntimeError(f"camera not connected ({self.error})")
         image = load_pattern(CAL_IMAGE)
@@ -407,7 +429,8 @@ class Camera(threading.Thread):
                 raise RuntimeError(f"projector display not found ({projector.error})")
             time.sleep(0.5)                  # let the new image reach the camera
             self.collect = []
-            time.sleep(CAL_SECONDS)
+            if stop.wait(CAL_SECONDS):
+                raise RuntimeError("stopped; calibration unchanged")
             means, self.collect = self.collect, None
         finally:
             self.collect = None
@@ -479,9 +502,10 @@ class Camera(threading.Thread):
         print(f"[camera] auto exposure: {e} us (p99 of lit frames {p99:.0f})", flush=True)
         return e, p99
 
-    def fit_transform(self, projector):
+    def fit_transform(self, projector, stop=None):
         """Project white, find its outline, store the transform to 16:9, then
-        put back the exposure and what the projector was showing."""
+        put back the exposure and what the projector was showing.
+        stop: an Event that ends it early, transform unchanged."""
         if not self.connected:
             raise RuntimeError(f"camera not connected ({self.error})")
         image = load_pattern("white_4K.jpg")
@@ -493,6 +517,8 @@ class Camera(threading.Thread):
                 raise RuntimeError(f"projector display not found ({projector.error})")
             e = FIT_EXPOSURE_US
             for _ in range(4):               # keep white unsaturated, but well lit
+                if stop is not None and stop.is_set():
+                    raise RuntimeError("stopped; transform unchanged")
                 img = self._grab_top(e)
                 p99 = float(np.percentile(img, 99))
                 if p99 > 245 and e > 34:
@@ -964,6 +990,141 @@ class Tracking:
 
 
 # --------------------------------------------------------------------------- #
+# scripts
+# --------------------------------------------------------------------------- #
+
+class Scripts:
+    """One script at a time: Calibrate deflicker, Fit transform and Scan (run
+    here), Autofocus (run by the page) or a test script run from outside
+    through this server (ui/script_client.py). While one runs, the page locks
+    its controls (yellow) and shows it in the Script pane, with Stop.
+
+    A script run outside the server (the page's autofocus, a test script)
+    holds a lease: it calls /script/update at least every LEASE_S, or it is
+    ended here, so a closed page or a crashed script can't lock the UI."""
+
+    LEASE_S = 15.0
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.cur = None
+        self.last = None                     # how the previous one ended
+
+    def begin(self, name, source, stopper=None, lease=False):
+        with self.lock:
+            self._expire()
+            if self.cur:
+                raise RuntimeError(f"a script is running: {self.cur['name']} "
+                                   f"(from {self.cur['source']}); stop it first")
+            token = os.urandom(8).hex()
+            self.cur = {"token": token, "name": str(name)[:120], "source": str(source)[:40],
+                        "detail": "", "started": time.time(), "seen": time.monotonic(),
+                        "stop": False, "stopper": stopper, "lease": lease,
+                        "alive": None, "describe": None, "outcome": None}
+        print(f"[script] {name} started (from {source})", flush=True)
+        return token
+
+    def attach(self, token, alive=None, describe=None, outcome=None):
+        """For a script running in a thread: alive() false ends it, with
+        outcome() as how it ended; describe() is its detail line."""
+        with self.lock:
+            if self.owns_locked(token):
+                self.cur.update(alive=alive, describe=describe, outcome=outcome)
+
+    def owns_locked(self, token):
+        return bool(token) and self.cur is not None and self.cur["token"] == token
+
+    def owns(self, token):
+        with self.lock:
+            return self.owns_locked(token)
+
+    def update(self, token, detail=None):
+        """Heartbeat (+ detail line) from the script's runner; answers the
+        status, whose stop_requested tells it to stop."""
+        with self.lock:
+            if not self.owns_locked(token):
+                raise RuntimeError("not the running script (it ended or lapsed)")
+            self.cur["seen"] = time.monotonic()
+            if detail is not None:
+                self.cur["detail"] = str(detail)[:300]
+        return self.status()
+
+    def nest(self, token, stopper):
+        """A server-side step (e.g. Calibrate deflicker) run inside the
+        running script: Stop reaches it too. Returns the stopper to put back."""
+        with self.lock:
+            if not self.owns_locked(token):
+                raise RuntimeError("not the running script")
+            old, self.cur["stopper"] = self.cur["stopper"], stopper
+            self.cur["seen"] = time.monotonic()
+            return old
+
+    def end(self, token, outcome="done"):
+        with self.lock:
+            if not self.owns_locked(token):
+                return
+            self._finish(outcome)
+
+    def stop(self):
+        """Stop pressed: flag it (the runner checks) and call its stopper."""
+        with self.lock:
+            if self.cur is None:
+                return self._status_locked()
+            self.cur["stop"] = True
+            stopper = self.cur["stopper"]
+            name = self.cur["name"]
+        print(f"[script] stop requested: {name}", flush=True)
+        if stopper:
+            try:
+                stopper()
+            except Exception as exc:         # report, but the flag is set anyway
+                print(f"[script] stopping {name}: {exc}", flush=True)
+        return self.status()
+
+    def status(self):
+        with self.lock:
+            self._expire()
+            return self._status_locked()
+
+    def _status_locked(self):
+        c = self.cur
+        if c is None:
+            return {"active": False, "last": self.last}
+        detail = c["detail"]
+        if c["describe"]:
+            try:
+                detail = c["describe"]() or detail
+            except Exception:
+                pass
+        return {"active": True, "name": c["name"], "source": c["source"], "detail": detail,
+                "elapsed_s": round(time.time() - c["started"], 1),
+                "stop_requested": c["stop"], "last": self.last}
+
+    def _finish(self, outcome):
+        c = self.cur
+        if c["stop"] and outcome in ("done", "finished"):
+            outcome = "stopped"
+        self.last = {"name": c["name"], "source": c["source"], "outcome": str(outcome)[:300],
+                     "ended": time.strftime("%H:%M:%S"),
+                     "duration_s": round(time.time() - c["started"], 1)}
+        self.cur = None
+        print(f"[script] {c['name']} ended: {self.last['outcome']}", flush=True)
+
+    def _expire(self):
+        c = self.cur
+        if c is None:
+            return
+        if c["lease"] and time.monotonic() - c["seen"] > self.LEASE_S:
+            self._finish(f"lapsed: no heartbeat for {self.LEASE_S:.0f} s")
+        elif c["alive"] is not None and not c["alive"]():
+            try:
+                outcome = c["outcome"]() if c["outcome"] else "finished"
+            except Exception:
+                outcome = "finished"
+            self._finish(outcome or "finished")
+
+
+# --------------------------------------------------------------------------- #
 # HTTP
 # --------------------------------------------------------------------------- #
 
@@ -981,7 +1142,7 @@ class UIServer(ThreadingHTTPServer):
         super().server_bind()
 
 
-def make_handler(stage, camera, projector, mirror, shutdown, tracking, scan):
+def make_handler(stage, camera, projector, mirror, shutdown, tracking, scan, scripts):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
             pass
@@ -1024,6 +1185,51 @@ def make_handler(stage, camera, projector, mirror, shutdown, tracking, scan):
                 with latest.cond:
                     latest.clients -= 1
 
+        def _as_script(self, name, fn, q):
+            """Run fn(stop_event) as the script `name`, or, when the request
+            carries the running script's token (?token=), as a step inside
+            it. Raises RuntimeError if another script runs, or fn fails."""
+            stop = threading.Event()
+            token = q.get("token")
+            if token:
+                old = scripts.nest(token, stop.set)
+                try:
+                    return fn(stop)
+                finally:
+                    try:
+                        scripts.nest(token, old)
+                    except RuntimeError:
+                        pass
+            token = scripts.begin(name, q.get("source", "UI"), stopper=stop.set)
+            outcome = "done"
+            try:
+                return fn(stop)
+            except Exception as exc:
+                outcome = "stopped" if stop.is_set() else f"failed: {exc}"
+                raise
+            finally:
+                scripts.end(token, outcome)
+
+        def _frame(self, q):
+            """The newest shown camera frame (deflickered, fitted view if on)
+            as PNG; ?after=<seq> waits up to ?timeout= s for a newer one."""
+            after = int(q.get("after", -1))
+            deadline = time.monotonic() + min(float(q.get("timeout", 3.0)), 30.0)
+            while camera.frame_seq <= after and time.monotonic() < deadline:
+                time.sleep(0.01)
+            seq, f = camera.frame_seq, camera.last_frame
+            if f is None:
+                return self._json({"error": "no camera frame yet"}, 503)
+            ok, buf = cv2.imencode(".png", f)
+            body = buf.tobytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Frame-Seq", str(seq))
+            self.end_headers()
+            self.wfile.write(body)
+
         def _projector_reply(self, st):
             if st["monitor"] is None and st["state"] == "closed" and st["error"]:
                 return self._json({**st, "error": "projector display not found: "
@@ -1062,7 +1268,9 @@ def make_handler(stage, camera, projector, mirror, shutdown, tracking, scan):
                 pass
 
         def do_GET(self):
-            path = urlparse(self.path).path
+            url = urlparse(self.path)
+            path = url.path
+            q = {k: v[0] for k, v in parse_qs(url.query).items()}
             if path == "/stage/events":
                 return self._events()
             if path == "/stage/status":
@@ -1084,6 +1292,17 @@ def make_handler(stage, camera, projector, mirror, shutdown, tracking, scan):
                 self._json(tracking.status())
             elif path == "/scan/status":
                 self._json(scan.status())
+            elif path == "/script/status":
+                self._json(scripts.status())
+            elif path == "/stage/state":
+                pos = stage.cache.get("POS")
+                try:
+                    pos = [int(v) for v in pos.split()[1:4]]
+                except (AttributeError, ValueError):
+                    pos = None
+                self._json({**stage.status(), "pos": pos, "lines": stage.replay()})
+            elif path == "/camera/frame":
+                self._frame(q)
             elif path == "/focus_score":
                 f = camera.last_frame
                 score = 0.0 if f is None else float(cv2.Laplacian(f, cv2.CV_64F).var())
@@ -1096,14 +1315,29 @@ def make_handler(stage, camera, projector, mirror, shutdown, tracking, scan):
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
             try:
                 if url.path == "/stage/send":
-                    line = str(json.loads(self._body() or b"{}").get("line", "")).strip()
+                    data = json.loads(self._body() or b"{}")
+                    line = str(data.get("line", "")).strip()
                     if not line or "\n" in line or "\r" in line:
                         return self._json({"error": "need one command line"}, 400)
+                    wait = data.get("wait")          # e.g. "DONE": answer with that reply
+                    got, reply = threading.Event(), []
+
+                    def on_line(text):
+                        if wait and not got.is_set() and text.startswith(wait):
+                            reply.append(text)
+                            got.set()
+                    if wait:
+                        stage.listeners.append(on_line)
                     try:
                         stage.send(line)
+                        if wait and not got.wait(min(float(data.get("timeout", 10.0)), 600.0)):
+                            return self._json({"error": f"no reply starting {wait!r} in time"}, 504)
                     except (RuntimeError, OSError) as exc:
                         return self._json({"error": str(exc)}, 409)
-                    self._json({"ok": True})
+                    finally:
+                        if wait:
+                            stage.listeners.remove(on_line)
+                    self._json({"ok": True, "reply": reply[0] if reply else None})
                 elif url.path == "/stage/connect":
                     stage.connect()
                     self._json(stage.status())
@@ -1141,7 +1375,8 @@ def make_handler(stage, camera, projector, mirror, shutdown, tracking, scan):
                     self._json(projector.status())
                 elif url.path == "/camera/calibrate":
                     try:
-                        camera.calibrate(projector)
+                        self._as_script("Calibrate deflicker",
+                                        lambda stop: camera.calibrate(projector, stop), q)
                     except RuntimeError as exc:
                         return self._json({**camera.stats(), "error": str(exc)}, 409)
                     self._json(camera.stats())
@@ -1154,7 +1389,8 @@ def make_handler(stage, camera, projector, mirror, shutdown, tracking, scan):
                     self._json({**camera.stats(), "exposure_us": e, "p99": round(p99, 1)})
                 elif url.path == "/camera/fit_transform":
                     try:
-                        camera.fit_transform(projector)
+                        self._as_script("Fit transform",
+                                        lambda stop: camera.fit_transform(projector, stop), q)
                     except RuntimeError as exc:
                         return self._json({**camera.stats(), "error": str(exc)}, 409)
                     self._json(camera.stats())
@@ -1177,10 +1413,26 @@ def make_handler(stage, camera, projector, mirror, shutdown, tracking, scan):
                         projector.image_name = os.path.basename(name)
                     self._projector_reply(projector.do("show"))
                 elif url.path == "/scan/start":
+                    data = json.loads(self._body() or b"{}")
                     try:
-                        scan.start(json.loads(self._body() or b"{}"))
+                        token = scripts.begin("Scan", data.get("source", "UI"), stopper=scan.stop)
                     except RuntimeError as exc:
                         return self._json({**scan.status(), "error": str(exc)}, 409)
+                    try:
+                        scan.start(data)
+                    except RuntimeError as exc:
+                        scripts.end(token, f"failed: {exc}")
+                        return self._json({**scan.status(), "error": str(exc)}, 409)
+
+                    def scan_outcome():
+                        st = scan.status()
+                        if st.get("error"):
+                            return "failed: " + st["error"]
+                        return f"saved {st.get('tiles', 0)} fields to {st.get('saved')}"
+                    scripts.attach(token, alive=lambda: scan.thread.is_alive(),
+                                   describe=lambda: f"{scan.status().get('phase', '')} · "
+                                                    f"{scan.status().get('tiles', 0)} fields",
+                                   outcome=scan_outcome)
                     self._json(scan.status())
                 elif url.path == "/scan/stop":
                     scan.stop()
@@ -1193,6 +1445,29 @@ def make_handler(stage, camera, projector, mirror, shutdown, tracking, scan):
                     except RuntimeError as exc:
                         return self._json({**tracking.status(), "error": str(exc)}, 409)
                     self._json(tracking.status())
+                elif url.path == "/script/start":
+                    data = json.loads(self._body() or b"{}")
+                    if not str(data.get("name", "")).strip():
+                        return self._json({"error": "need {\"name\": ...}"}, 400)
+                    try:
+                        token = scripts.begin(data["name"], data.get("source", "outside"), lease=True)
+                    except RuntimeError as exc:
+                        return self._json({**scripts.status(), "error": str(exc)}, 409)
+                    if data.get("detail"):
+                        scripts.update(token, data["detail"])
+                    self._json({**scripts.status(), "token": token})
+                elif url.path == "/script/update":
+                    data = json.loads(self._body() or b"{}")
+                    try:
+                        self._json(scripts.update(data.get("token"), data.get("detail")))
+                    except RuntimeError as exc:
+                        self._json({**scripts.status(), "error": str(exc)}, 409)
+                elif url.path == "/script/end":
+                    data = json.loads(self._body() or b"{}")
+                    scripts.end(data.get("token"), data.get("outcome", "done"))
+                    self._json(scripts.status())
+                elif url.path == "/script/stop":
+                    self._json(scripts.stop())
                 elif url.path == "/focus":
                     data = json.loads(self._body() or b"{}")
                     if not isinstance(data.get("z"), (int, float)):
@@ -1235,6 +1510,7 @@ def main():
     tracking = Tracking(stage, camera, projector)
     scan = Scan(stage, camera, projector, mirror, tracking, encode, load_pattern,
                 FIT_EXPOSURE_US, steps_per_mm())
+    scripts = Scripts()
     def shutdown():
         # serve_forever() returns once shutdown() is called from another
         # thread; then the cleanup below runs, as for Ctrl+C.
@@ -1248,7 +1524,7 @@ def main():
     try:
         server = UIServer(("127.0.0.1", args.port),
                           make_handler(stage, camera, projector, mirror,
-                                       shutdown, tracking, scan))
+                                       shutdown, tracking, scan, scripts))
     except OSError as exc:
         print(f"port {args.port} is already in use ({exc}).\n"
               f"  Is the UI already running? Close its window (or Ctrl+C in its "
