@@ -145,6 +145,49 @@ Replies have a 3-byte header (`14 <len> 00`), then little-endian data.
 
 ## Debugging log
 
+### 2026-10-07 — the fault bands print into the resist; a second band came and went during one exposure — OPEN
+
+**Symptom.** In the first dose test on resist (ui/README.md, Dose test), the
+developed fields carry columns of capsule-shaped bars that aren't in the
+pattern. The pattern was black there.
+
+**Method.**
+- The developed row was imaged with `ui/strip_scan.py` under White, 25
+  tiles every 200 X steps.
+- In consecutive raw tiles, each feature was checked for whether it moves
+  with the wafer (printed) or stays at one camera position (the fault band
+  in the light used for imaging).
+- The 70 s field was then cut out of the stitched strip:
+  `scans/2026-10-07_19-31-21_strip/field_70s.png`;
+  [docs/2026-10-07_bands_printed_70s.jpg](docs/2026-10-07_bands_printed_70s.jpg).
+
+**Measured.**
+- **At the right of every field seen** (60 s, 70 s, 100 s): printed bars
+  at ≈ 0.89–0.95 of the field width. That's the known band at input
+  x 3456–3712 (mirror columns 1728–1856).
+- **In the 70 s field only:** a second printed column at ≈ 0.30–0.37 of the
+  width, input x ≈ 1150–1400 (mirror columns ≈ 575–700), running through
+  "HELLO FRESHIES" and the L's. The 60 s and 100 s fields don't have it.
+- **While imaging:** the 1728+ band also shows as a stationary dark striped
+  column at the right of every tile.
+
+**Interpretation.**
+- The bands put out light whatever the image says (here black), so
+  anything projected prints them. Keeping the pattern left of the 1728+
+  band keeps the band out of the structures, but it still exposes its own
+  strip of each field.
+- The second band is intermittent. It matches the bands' earlier
+  behaviour (wrong data that depends on the image and moves after a flex
+  reseat; entries below): a flaky controller-to-DMD connection rather than
+  dead mirrors.
+
+**Next steps.**
+- Before an exposure, project the pattern and check the camera for extra
+  bands.
+- Reseat or replace the DMD flex.
+- If a band can't be avoided, mask its strip with a blade or accept it.
+
+
 ### 2026-09-26 — stripes after the flex reseat: moved, and fail on unbalanced rows — OPEN
 
 **Context.** A second, careful reseat of the DMD flex cleared the DMD init
