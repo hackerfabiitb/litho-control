@@ -87,7 +87,7 @@ POST /projector/restore      ... and put that back
 POST /projector/pattern      {"name": "white_4K.jpg"}: show an image from patterns/
                              {"checker": 100}: a black/white checkerboard with
                              100 px squares at the projector's resolution
-                             (top-left square white, as patterns/make_checkerboards.py)
+                             (top-left square white; patterns/lib, as make_checkerboards.py)
 POST /projector/close        close the window; the projector shows the desktop
 POST /shutdown               stop the server cleanly (ui\\start.ps1 sends it
                              when the UI window is closed)
@@ -117,6 +117,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "camera"))
 sys.path.insert(0, os.path.join(ROOT, "projector"))
 sys.path.insert(0, os.path.join(ROOT, "xyz_stage"))
+sys.path.insert(0, os.path.join(ROOT, "patterns"))
 
 from deflicker import KeepFilter, relative_cutoff  # noqa: E402
 from optics import FIELD_WIDTH_UM  # noqa: E402
@@ -124,8 +125,9 @@ from tracker import AxisMap, Tracker  # noqa: E402
 from scan import Scan  # noqa: E402  (ui/scan.py)
 from fit_transform import draw_debug, find_quad, make_transform  # noqa: E402
 from display import (PatternWindow, detached_displays, extend_desktop,  # noqa: E402
-                     find_projector, make_pattern)  # (importing display sets DPI awareness)
+                     find_projector)  # (importing display sets DPI awareness)
 from find_arduino import BAUD, find_arduino  # noqa: E402
+from lib import checkerboard_image  # noqa: E402  (patterns/lib)
 from pylon_utils import _try_set, frame_score, grab_frames, open_camera  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -1404,7 +1406,7 @@ def make_handler(stage, camera, projector, mirror, shutdown, tracking, scan, scr
                             raise ValueError("checker square size must be >= 1 px")
                         m = projector.monitor
                         w, h = (m.width, m.height) if m else (3840, 2160)
-                        grey = 255 - make_pattern(f"checker{n}", w, h)
+                        grey = checkerboard_image(n, w, h)
                         projector.source = cv2.cvtColor(grey, cv2.COLOR_GRAY2BGR)
                         projector.image_name = f"checker {n} px"
                     else:

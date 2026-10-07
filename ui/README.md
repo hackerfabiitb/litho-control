@@ -171,8 +171,8 @@ All from the PROJECTOR panel:
     nearest-neighbour, so binary masks stay binary. Changing the fit
     re-applies it to what's showing.
 - **Checker [N] px squares:** a black/white checkerboard drawn at the
-  projector's resolution, top-left square white (as
-  `patterns/make_checkerboards.py`). Changing N while a checkerboard is
+  projector's resolution, top-left square white (`checkerboard_image` in
+  `patterns/lib`, as `patterns/scripts/make_checkerboards.py`). Changing N while a checkerboard is
   showing re-projects it.
 
 The pattern window only opens with the first White, Black, Image or Checker.

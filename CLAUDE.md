@@ -29,6 +29,9 @@
 - `projector/`: DLP471TPEVM: test patterns, calibration, DMD diagnostics.
   Reuse `display.py` and `capture.py` rather than writing new pattern or
   capture code.
+- `patterns/`: images to project, and the pattern library from patterns-py
+  (`lib/`, `scripts/`). Build new patterns with `lib` (integer-pixel
+  geometry, `render_bgr` for projecting) rather than drawing them ad hoc.
 - `xyz_stage/`: Arduino Uno stepper stage. Firmware in `firmware/xyz1/`. Use
   `find_arduino.find_arduino()` to get the port rather than hard-coding it.
 - `ui/`: the control page (`index.html`, from litho-ui) and `server.py`. The
